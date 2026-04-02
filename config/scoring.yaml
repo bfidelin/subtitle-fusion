@@ -1,0 +1,17 @@
+weights:
+  asr_low_confidence: 1.5
+  ocr_exact_match: 4.0
+  ocr_partial_match: 2.0
+  imdb_character_match: 3.0
+  imdb_actor_match: 1.5
+  phonetic_match: 2.0
+  lexical_similarity: 1.5
+  same_time_face_match: 1.5
+  contradiction_penalty: -4.0
+  out_of_cast_penalty: -3.0
+thresholds:
+  auto_correct: 6.0
+  suggest_only: 3.5
+low_confidence:
+  word: 0.65
+  segment_avg: 0.75
