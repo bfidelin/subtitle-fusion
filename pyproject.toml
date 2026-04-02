@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subtitle-fusion"
+version = "0.1.0"
+description = "Enriched subtitle generation with ASR, OCR, diarization, and IMDb context"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Bruno Fidelin" }]
+dependencies = [
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.5.0",
+]
+
+[project.scripts]
+subtitle-fusion = "src.main:main"
+
+[tool.setuptools]
+py-modules = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
