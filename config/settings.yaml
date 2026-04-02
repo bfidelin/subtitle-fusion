@@ -1,0 +1,18 @@
+pipeline:
+  enable_ocr: true
+  enable_imdb: true
+  enable_vision: false
+  enable_sdh: false
+  write_debug_json: true
+
+providers:
+  asr: stub
+  diarization: stub
+  ocr: tesseract
+  imdb: local_tsv
+  vision: stub
+
+paths:
+  imdb_dir: data/imdb
+  cache_dir: data/cache
+  work_dir: data/work
