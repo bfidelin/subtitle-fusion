@@ -24,7 +24,10 @@ subtitle_fusion/
 ├─ .env.example
 ├─ config/
 │  ├─ settings.yaml
-│  └─ scoring.yaml
+│  ├─ scoring.yaml
+│  └─ style_rules.yaml
+├─ docs/
+│  └─ SDH_STYLE_GUIDE.md
 ├─ src/
 │  ├─ main.py
 │  ├─ pipeline.py
@@ -51,6 +54,21 @@ The pipeline should only auto-correct uncertain segments, using evidence in this
 
 Raw ASR text must always be preserved alongside corrected text.
 
+## SDH policy
+
+This project now includes:
+
+- `docs/SDH_STYLE_GUIDE.md` for speaker IDs, sound effects, narration, and spoiler-safe naming
+- `config/style_rules.yaml` for project-level SDH behavior
+
+Highlights:
+
+- show speaker labels only when needed for clarity
+- prefer character names over actor names in visible subtitles
+- do not reveal unrevealed names too early
+- include only plot-pertinent or tonally relevant sound labels
+- preserve raw ASR text and corrected text separately
+
 ## Example CLI
 
 ```bash
@@ -65,8 +83,9 @@ subtitle-fusion run \
 
 ## Next steps
 
-- add models and scoring
-- add IMDb TSV loader
-- add fusion engine
-- add exporters
-- add stub pipeline + tests
+- wire `style_rules.yaml` into runtime rendering
+- add models and scoring refinements
+- add IMDb TSV loader improvements
+- add fusion engine refinements
+- add exporters improvements
+- add non-stub providers and end-to-end tests
