@@ -40,18 +40,32 @@ def run_pipeline(
     output_dir: Path,
     settings_path: Path = Path("config/settings.yaml"),
     scoring_path: Path = Path("config/scoring.yaml"),
+    audio_analysis_path: Path = Path("config/audio_analysis.yaml"),
 ) -> PipelineResult:
     _ = video_path
     settings = load_settings(settings_path)
     scoring_cfg = load_scoring_config(scoring_path)
+    audio_cfg = load_settings(audio_analysis_path)
     imdb_dir = Path(settings.get("paths", {}).get("imdb_dir", "data/imdb"))
     imdb = IMDbIndex.from_dir(imdb_dir)
+
+    # TODO: pass 1 should extract audio and candidate windows from the input video.
+    # TODO: add audio-event detection hook based on audio_cfg["audio_events"].
+    # TODO: add music detection hook based on audio_cfg["music_detection"].
+    # TODO: when music is present, optionally call a track-recognition provider
+    #       in the configured provider order (e.g. shazamkit, audd, acrcloud).
+    # TODO: when vocal music is detected, optionally run source separation before
+    #       lyric transcription, then keep lyrics only when confidence is high.
 
     segments = build_stub_segments()
     if media.imdb_title_id:
         title_candidates = imdb.get_characters_for_title(media.imdb_title_id) + imdb.get_people_for_title(media.imdb_title_id)
         for seg in segments:
             seg.imdb_candidates = title_candidates
+
+    # TODO: attach detected sound events and music metadata to segments.
+    # Suggested metadata shape is documented in docs/AUDIO_EVENTS_AND_MUSIC.md.
+    _ = audio_cfg
 
     for seg in segments:
         if segment_needs_review(seg, scoring_cfg):
