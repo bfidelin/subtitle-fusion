@@ -8,6 +8,7 @@ Production-oriented Python project to generate enriched subtitles from video by 
 - IMDb context for title, cast, and character names
 - optional actor/face hints
 - rule-based fusion and SDH output
+- audio-event, music, and track-recognition hooks
 
 ## Planned outputs
 
@@ -25,9 +26,11 @@ subtitle_fusion/
 ├─ config/
 │  ├─ settings.yaml
 │  ├─ scoring.yaml
-│  └─ style_rules.yaml
+│  ├─ style_rules.yaml
+│  └─ audio_analysis.yaml
 ├─ docs/
-│  └─ SDH_STYLE_GUIDE.md
+│  ├─ SDH_STYLE_GUIDE.md
+│  └─ AUDIO_EVENTS_AND_MUSIC.md
 ├─ src/
 │  ├─ main.py
 │  ├─ pipeline.py
@@ -35,7 +38,9 @@ subtitle_fusion/
 │  ├─ scoring.py
 │  ├─ imdb_index.py
 │  ├─ fusion.py
-│  └─ exporters.py
+│  ├─ exporters.py
+│  ├─ audio_music.py
+│  └─ track_recognition.py
 └─ tests/
    ├─ test_scoring.py
    ├─ test_fusion.py
@@ -69,6 +74,23 @@ Highlights:
 - include only plot-pertinent or tonally relevant sound labels
 - preserve raw ASR text and corrected text separately
 
+## Audio and music policy
+
+This project now also includes:
+
+- `docs/AUDIO_EVENTS_AND_MUSIC.md` for event detection, music windows, track recognition, and lyrics policy
+- `config/audio_analysis.yaml` for provider selection and thresholds
+- `src/audio_music.py` for provider interfaces and stub data classes
+- `src/track_recognition.py` for simple track-candidate scoring
+
+Design direction:
+
+- detect general sound events separately from dialogue ASR
+- detect music windows separately from general sound events
+- recognize commercial tracks through pluggable providers when configured
+- use lyrics overlap and fingerprint-like evidence as candidate-ranking signals
+- keep track-identification metadata separate from visible subtitle output by default
+
 ## Example CLI
 
 ```bash
@@ -84,6 +106,7 @@ subtitle-fusion run \
 ## Next steps
 
 - wire `style_rules.yaml` into runtime rendering
+- wire `audio_analysis.yaml` into audio/music providers
 - add models and scoring refinements
 - add IMDb TSV loader improvements
 - add fusion engine refinements
