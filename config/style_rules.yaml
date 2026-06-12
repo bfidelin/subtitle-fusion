@@ -1,0 +1,33 @@
+mode: sdh
+speaker_labels:
+  enabled: true
+  show_only_when_needed: true
+  use_character_name_over_actor: true
+  fallback_labels:
+    unknown_male: "[male voice]"
+    unknown_female: "[female voice]"
+    unknown_person: "[speaker]"
+  reveal_name_only_if_known_in_story: true
+  output_style:
+    srt: "colon"
+    ass: "bracket"
+
+sounds:
+  include_plot_pertinent_only: true
+  include_music_mood: true
+  include_obvious_visible_actions: false
+  include_silence_when_plot_pertinent: true
+
+music:
+  subtitle_lyrics_when_intelligible_and_relevant: true
+  prefer_short_music_labels_when_lyrics_not_needed: true
+
+correction:
+  preserve_raw_text: true
+  auto_correct_only_with_strong_evidence: true
+  evidence_priority:
+    - ocr
+    - imdb_character
+    - dialogue_context
+    - actor_face_hint
+    - phonetic
