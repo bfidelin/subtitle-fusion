@@ -1,0 +1,34 @@
+audio_events:
+  provider: yamnet
+  enabled: true
+  min_event_score: 0.65
+  merge_adjacent_events: true
+
+music_detection:
+  provider: essentia
+  enabled: true
+  detect_music_presence: true
+  detect_vocal_vs_instrumental: true
+  detect_mood: true
+
+track_recognition:
+  provider_order:
+    - shazamkit
+    - audd
+    - acrcloud
+  enabled: false
+  query_only_when_music_present: true
+  min_excerpt_seconds: 8
+  max_excerpt_seconds: 20
+  store_metadata_only_by_default: true
+
+source_separation:
+  enabled: false
+  provider: demucs
+  run_only_for_vocal_music: true
+
+lyrics_transcription:
+  enabled: false
+  require_source_separation: true
+  min_lyrics_confidence: 0.75
+  include_visible_lyrics_only_when_plot_relevant: true
