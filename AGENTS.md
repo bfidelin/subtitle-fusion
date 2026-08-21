@@ -6,8 +6,9 @@ This repository is configured to be easy for coding agents to navigate.
 Build a Python project that produces enriched subtitles from video by combining:
 - primary ASR with timestamps and uncertainty markers
 - very-fast scout ASR/OCR/audio analysis to locate difficult regions
+- first-class speaker diarization with stable episode-local speaker IDs and overlap detection
+- speaker-to-character identity resolution kept separate from diarization
 - selective local re-ASR/review instead of expensive whole-episode reprocessing
-- speaker diarization
 - OCR from frames
 - IMDb/show context for characters and titles
 - SDH rendering rules
@@ -33,7 +34,7 @@ Do not duplicate detailed design docs.
 12. `src/scoring.py`
 
 ## Repository map
-- `src/models.py`: core data classes for segments, words, decisions, and pipeline results
+- `src/models.py`: core data classes for segments, words, decisions, speaker IDs, and pipeline results
 - `src/scoring.py`: confidence thresholds and uncertain-word marking
 - `src/fusion.py`: candidate scoring and correction decisions
 - `src/imdb_index.py`: local IMDb TSV loading and candidate extraction
@@ -42,7 +43,8 @@ Do not duplicate detailed design docs.
 - `src/netflix_style.py`: Netflix-style French layout/timing validation
 - `src/exporters.py`: JSON, SRT, and ASS output
 - `src/pipeline.py`: orchestration and future integration points
-- `docs/FAST_SCOUT_PIPELINE.md`: fast scouts, evidence timeline, confidence router, selective escalation and backend strategy
+- `docs/FAST_SCOUT_PIPELINE.md`: fast scouts, diarization, evidence timeline, confidence router, selective escalation and backend strategy
+- `docs/SDH_STYLE_GUIDE.md`: diarization-aware speaker rendering and SDH policy
 - `docs/`: style and architecture guidance
 - `config/`: runtime policy and thresholds
 - `tests/`: unit tests
@@ -53,7 +55,10 @@ Do not duplicate detailed design docs.
 - Only auto-correct uncertain content when evidence is strong.
 - Confidence controls compute cost: expensive processing should be selective and local.
 - Prefer cheap whole-episode scouts over expensive whole-episode second passes.
-- Keep ASR/OCR/audio/source-separation providers behind replaceable adapters.
+- Treat diarization as a first-class timestamped evidence stream.
+- Keep `speaker_id` separate from character identity. `SPEAKER_03` does not mean `Muriel` until independent evidence resolves it.
+- Preserve overlap information instead of forcing all speech into one speaker.
+- Keep ASR/OCR/diarization/audio/source-separation providers behind replaceable adapters.
 - Prefer character names over actor names in visible subtitle text.
 - Do not reveal names before the story reveals them.
 - Keep visible SDH output concise.
@@ -61,20 +66,34 @@ Do not duplicate detailed design docs.
 - The Netflix formatter may change layout/timing safely but must never invent, truncate or paraphrase dialogue silently.
 
 ## Evidence priority
-Use this order when resolving uncertain tokens:
+Use this order when resolving uncertain names/tokens:
 1. OCR explicit on-screen text
 2. IMDb character match restricted to current title/episode
 3. names already validated in show/episode glossary
 4. dialogue context
-5. actor/face hint
-6. phonetic similarity
+5. validated speaker-to-character continuity
+6. actor/face hint
+7. phonetic similarity
 
 A disagreement between a cheap scout ASR and the primary ASR is an escalation signal, not an automatic correction.
+A high diarization confidence is not enough to assign a character name.
+
+## Diarization policy
+- Produce stable episode-local speaker IDs where possible.
+- Preserve speaker-turn boundaries and overlap regions.
+- Add a diarization confidence/quality signal when the backend exposes one.
+- Use fast whole-episode speaker-change/embedding analysis first.
+- Escalate only ambiguous boundaries, overlaps or speaker-identity conflicts.
+- Let ASR consume diarization boundaries when useful, but keep ASR and diarization independently inspectable.
+- Resolve character identity in a separate layer using OCR/context/IMDb/validated mappings/optional visual hints.
+- Speaker labels in final SDH output are a rendering decision; they are not simply a dump of `speaker_id`.
 
 ## Confidence policy
 Keep evidence dimensions explainable where practical rather than collapsing them into one opaque score:
 - ASR confidence
 - scout agreement
+- diarization confidence
+- speaker identity confidence
 - OCR confidence
 - proper-name confidence
 - context confidence
@@ -109,19 +128,23 @@ subtitle-fusion run \
 ## Preferred implementation order
 1. ingest real Faster-Whisper word/timestamp/confidence data
 2. add evidence timeline + confidence router
-3. add local audio crop + selective re-ASR
-4. wire fast OCR detection/region recognition
-5. add show/episode proper-name glossary persistence
-6. add Moonshine-style scout ASR adapter
-7. add audio-event/music/singing routing
-8. add selective Demucs + vocal ASR
-9. add translation + grammar/spelling/context reviewer
-10. add shot-aware Netflix timing
-11. profile and calibrate thresholds on real episodes
+3. add first-class diarization turns, overlaps and stable speaker IDs
+4. add local audio crop + selective re-ASR
+5. wire fast OCR detection/region recognition
+6. add show/episode proper-name glossary persistence
+7. add speaker-identity resolution separate from diarization
+8. add Moonshine-style scout ASR adapter
+9. add audio-event/music/singing routing
+10. add selective Demucs + vocal ASR
+11. add translation + grammar/spelling/context reviewer
+12. add shot-aware Netflix timing
+13. profile and calibrate thresholds on real episodes
 
 ## Avoid
 - large speculative rewrites
 - expensive whole-episode processing when a local window is sufficient
+- conflating diarization with character identification
+- discarding overlapping-speaker evidence
 - coupling core semantics to one hardware/backend provider
 - changing output semantics without updating docs and tests
 - adding long, stale instructions to this file
