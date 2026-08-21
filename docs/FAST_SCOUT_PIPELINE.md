@@ -10,11 +10,15 @@ The target use case is a 40–50 minute TV episode where the first ASR pass is a
 
 - keep the whole-episode pass cheap and parallel
 - preserve word timestamps and ASR confidence
+- make speaker diarization a first-class signal, not a late reviewer hint
+- keep stable speaker IDs across the episode
+- detect speaker changes and overlapping speech explicitly
+- distinguish diarization (`SPEAKER_03`) from character identity (`Muriel`)
 - detect text on screen without OCR-ing every frame at full quality
 - detect music, singing and important sound events separately from dialogue
 - re-run ASR only around suspicious words or segments
 - use OCR, IMDb/title context and previous validated names as evidence
-- separate ASR confidence, translation confidence and contextual confidence
+- separate ASR, diarization, speaker identity, translation and contextual confidence
 - never let the Netflix formatter invent, truncate or silently paraphrase dialogue
 - keep providers/backend implementations swappable
 
@@ -23,53 +27,55 @@ The target use case is a 40–50 minute TV episode where the first ASR pass is a
 ```text
 VIDEO + AUDIO
     |
-    +----------------------+----------------------+----------------------+
-    |                      |                      |                      |
-    v                      v                      v                      v
-cheap ASR scout       text detector         audio-event scout      shot detector
-(Moonshine Tiny       (RapidOCR/             (YAMNet-like)          (FFmpeg/OpenCV)
- or similar)           PP-OCR mobile)
-    |                      |                      |
-    +----------------------+----------------------+----------------------+
-                                   |
-                                   v
-                         FAST WHOLE-EPISODE PASS
-                                   |
-                                   v
-                           Faster-Whisper ASR
-                     timestamps + word confidence
-                                   |
-                                   v
-                           CONFIDENCE ROUTER
-                                   |
-              +--------------------+--------------------+
-              |                                         |
-              v                                         v
-         confidence OK                           suspicious window
-         keep result                              crop 4–10 seconds
-                                                        |
-                                                        v
-                                             selective re-evaluation
-                                              - stronger ASR / beam
-                                              - OCR recognition
-                                              - nearby dialogue
-                                              - IMDb/glossary
-                                              - validated names
-                                              - speaker context
-                                              - phonetic candidates
-                                                        |
-                                                        v
-                                              contextual reviewer
-                                                        |
-                                                        v
-                                      grammar/spelling/translation QA
-                                                        |
-                                                        v
-                                               Netflix / SDH pass
-                                                        |
-                                                        v
-                                              SRT + ASS + debug JSON
+    +----------------------+----------------------+----------------------+----------------------+
+    |                      |                      |                      |                      |
+    v                      v                      v                      v                      v
+cheap ASR scout       text detector         audio-event scout      shot detector       diarization
+(Moonshine Tiny       (RapidOCR/             (YAMNet-like)          (FFmpeg/OpenCV)     speaker turns
+ or similar)           PP-OCR mobile)                                                     overlaps
+    |                      |                      |                      |                  stable IDs
+    +----------------------+----------------------+----------------------+----------------------+
+                                               |
+                                               v
+                                     EVIDENCE TIMELINE
+                                               |
+                                               v
+                                      Faster-Whisper ASR
+                                timestamps + word confidence
+                                               |
+                                               v
+                                      CONFIDENCE ROUTER
+                                               |
+                         +---------------------+---------------------+
+                         |                                           |
+                         v                                           v
+                    confidence OK                             suspicious window
+                    keep result                                crop 4–10 seconds
+                                                                    |
+                                                                    v
+                                                         selective re-evaluation
+                                                          - stronger ASR / beam
+                                                          - OCR recognition
+                                                          - nearby dialogue
+                                                          - IMDb/glossary
+                                                          - validated names
+                                                          - speaker/overlap context
+                                                          - phonetic candidates
+                                                                    |
+                                                                    v
+                                                          contextual reviewer
+                                                                    |
+                                                                    v
+                                                 grammar/spelling/translation QA
+                                                                    |
+                                                                    v
+                                                           Netflix / SDH pass
+                                                                    |
+                                                                    v
+                                                          SRT + ASS + debug JSON
 ```
+
+The evidence timeline is the central join point. ASR words, speaker turns, OCR hits, shot boundaries, music windows and sound events should all be timestamped so later stages can reason over the same local window.
 
 ## Level 0: ultra-cheap scouts
 
@@ -143,6 +149,97 @@ This classifier is a router, not the final SDH caption generator.
 
 Use cheap scene/shot detection from FFmpeg/OpenCV or an equivalent backend. Shot boundaries later help Netflix-style subtitle timing and prevent badly hanging captions across cuts.
 
+## Diarization: first-class speaker timeline
+
+Diarization runs alongside the whole-episode ASR path and contributes evidence before contextual review.
+
+The core question is:
+
+> **Who spoke when?**
+
+It is deliberately separate from:
+
+> **Which character is this speaker?**
+
+The diarizer should produce stable episode-local IDs such as:
+
+```text
+00:01:12.200 --> 00:01:16.900  SPEAKER_01
+00:01:17.000 --> 00:01:19.400  SPEAKER_02
+00:01:19.100 --> 00:01:20.200  SPEAKER_01 + SPEAKER_02  overlap
+```
+
+Required evidence where available:
+
+- speaker-turn start/end timestamps
+- stable episode-local speaker ID
+- speaker-change boundaries
+- overlap regions
+- diarization confidence/quality signal
+- optional speaker embedding/reference ID for clustering
+
+### Diarization is not character identification
+
+Keep these concepts separate in the data model:
+
+```text
+speaker_id = SPEAKER_03
+speaker_identity_candidate = Muriel
+speaker_identity_confidence = 0.94
+```
+
+`SPEAKER_03` means only that the system believes the same voice appears in those regions. Mapping it to `Muriel` requires independent evidence such as:
+
+1. visible/on-screen speaker context
+2. OCR/name card evidence
+3. dialogue context
+4. title/episode character candidates
+5. previously validated speaker-to-character mappings
+6. optional face/actor hints
+
+This prevents a diarization clustering error from silently becoming a wrong character name.
+
+### Fast/slow policy for diarization
+
+Apply the same selective-compute philosophy used elsewhere:
+
+- run a fast whole-episode VAD/speaker-change/embedding path
+- cluster speaker embeddings globally or in chunks
+- keep stable speaker IDs for the episode
+- only escalate ambiguous boundaries, overlaps or low-confidence turns
+- avoid expensive re-diarization of clean single-speaker regions
+
+Useful escalation triggers include:
+
+- two voices overlap
+- rapid turn-taking
+- a speaker ID changes inside one grammatical utterance
+- speaker identity conflicts with visible character evidence
+- the same apparent character receives multiple speaker IDs
+- diarization confidence is low near a subtitle boundary
+
+### How diarization improves SDH
+
+Diarization is essential for deciding whether a visible speaker label is needed.
+
+Examples:
+
+```text
+SPEAKER_03 visible and obvious
+-> no label needed
+
+SPEAKER_03 off-screen, identity known as Muriel
+-> [Muriel] Attends-moi !
+
+SPEAKER_03 off-screen, identity not yet revealed
+-> [voix féminine] Attends-moi !
+
+SPEAKER_01 and SPEAKER_02 overlap
+-> split/position dialogue or label speakers according to the output format/style rules
+```
+
+The renderer must remain spoiler-safe: a validated backend identity must not be displayed before the story has revealed that identity to the viewer.
+
 ## Level 1: normal whole-episode ASR
 
 The current fast Faster-Whisper path remains the primary transcription pass.
@@ -157,6 +254,8 @@ Required outputs:
 - optional alternative candidates when inexpensive
 
 This is the transcript that should be accepted directly for the majority of the episode.
+
+ASR alignment should consume diarization boundaries when useful, especially around rapid speaker changes and overlaps, but the ASR text and speaker timeline remain independently inspectable evidence.
 
 ## Confidence router
 
@@ -196,6 +295,8 @@ Other triggers must be able to escalate a segment even when ASR confidence looks
 - improbable sentence in local dialogue context
 - language switch
 - overlapping speakers
+- low-confidence speaker boundary
+- inconsistent speaker identity
 - singing/music contamination
 - named entity seen elsewhere with a different spelling
 
@@ -217,9 +318,12 @@ Possible escalation knobs:
 - higher beam/best-of
 - alternate temperature/decoding settings
 - VAD-aware crop boundaries
+- diarization-aware crop boundaries
 - isolated dialogue stem if music is masking speech
 - language hint
 - initial prompt containing validated character/place names
+
+For overlaps, the local review path may optionally separate voices/stems or rerun alignment with speaker boundaries rather than treating the mixed region as a normal single-speaker segment.
 
 Store all hypotheses in debug metadata before choosing the final text.
 
@@ -234,12 +338,16 @@ Recommended context package:
 - scout ASR hypothesis
 - 2–3 previous subtitle events
 - 2–3 following subtitle events
-- speaker ID / diarization result
+- stable speaker ID
+- diarization confidence
+- overlap flags/timestamps
+- candidate character identity and confidence
 - OCR hits around the same timestamp
 - current title/season/episode
 - IMDb character/actor candidates
 - recurring show glossary
 - names already validated earlier in the episode
+- previously validated speaker-to-character mappings
 - phonetic alternatives
 
 The reviewer may correct spelling, grammar, punctuation and translation, but must preserve meaning and keep the raw ASR evidence untouched.
@@ -251,6 +359,8 @@ Avoid one opaque "magic confidence" score. Keep independent evidence scores wher
 ```text
 asr_confidence
 scout_agreement
+diarization_confidence
+speaker_identity_confidence
 ocr_confidence
 proper_noun_confidence
 context_confidence
@@ -260,6 +370,8 @@ final_confidence
 ```
 
 `final_confidence` can be a routing/decision score, but the underlying components must remain visible in `output.debug.json` so a correction is explainable.
+
+A speaker identity must never be inferred solely because `diarization_confidence` is high. Those two scores answer different questions.
 
 ## Proper names and OCR
 
@@ -271,8 +383,9 @@ Evidence priority remains:
 2. title/episode-restricted character candidates
 3. names already validated in the current episode/show glossary
 4. dialogue context
-5. actor/face hint
-6. phonetic similarity
+5. validated speaker-to-character continuity
+6. actor/face hint
+7. phonetic similarity
 
 Never translate a proper name merely to improve linguistic fluency. Preserve approved spelling, accents and diacritics.
 
@@ -327,6 +440,10 @@ ASR_SCOUT
 - Moonshine Tiny / Streaming
 - PocketSphinx (optional legacy/minimal)
 
+DIARIZATION
+- interchangeable VAD / speaker embedding / clustering adapter
+- optional stronger overlap/boundary refinement backend
+
 OCR_FAST
 - RapidOCR ONNX Runtime
 - PP-OCR mobile
@@ -348,16 +465,19 @@ On an NVIDIA machine, CUDA will often be the preferred heavy-compute backend. Op
 
 ## Parallelism
 
-The first-stage scouts should run concurrently where practical because they inspect independent modalities.
+The first-stage scouts and diarization should run concurrently where practical because they inspect complementary signals.
 
 Conceptually:
 
 ```text
                    +-> ASR scout --------+
+                   +-> diarization -------+
 video/audio input -+-> OCR/text detect ---+-> evidence timeline
                    +-> audio events ------+
                    +-> shot detect -------+
 ```
+
+Diarization may share VAD/audio preprocessing with the ASR path to avoid decoding or resampling the same audio repeatedly.
 
 The evidence timeline then feeds the confidence router and selective second pass.
 
@@ -374,6 +494,10 @@ The exact percentages must be measured on real episodes. Add profiling for:
 - real-time factor by stage
 - number/percentage of segments escalated
 - seconds of audio reprocessed
+- diarization runtime
+- number of speaker turns and overlaps
+- percentage of low-confidence speaker boundaries
+- number of speaker identities resolved/changed
 - OCR frames/regions processed
 - Demucs seconds processed
 - GPU/CPU time per provider
@@ -383,15 +507,17 @@ The exact percentages must be measured on real episodes. Add profiling for:
 
 1. add an evidence timeline and router data model
 2. wire real Faster-Whisper word confidence into the router
-3. add local audio crop + selective re-ASR
-4. add fast OCR detection and region-based recognition
-5. add show/episode proper-name glossary persistence
-6. add scout ASR adapter (Moonshine first)
-7. add audio-event/music/singing routing
-8. add selective Demucs + vocal ASR
-9. add grammar/spelling/translation QA reviewer
-10. add shot-aware Netflix timing
-11. profile and calibrate thresholds on real episodes
+3. add first-class diarization turns, overlaps and stable speaker IDs to the evidence timeline
+4. add local audio crop + selective re-ASR
+5. add fast OCR detection and region-based recognition
+6. add show/episode proper-name glossary persistence
+7. add speaker-identity resolution separate from diarization
+8. add scout ASR adapter (Moonshine first)
+9. add audio-event/music/singing routing
+10. add selective Demucs + vocal ASR
+11. add grammar/spelling/translation QA reviewer
+12. add shot-aware Netflix timing
+13. profile and calibrate thresholds on real episodes
 
 ## References / prior art
 
