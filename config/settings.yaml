@@ -1,18 +1,42 @@
 pipeline:
-  enable_ocr: true
+  enable_ocr: false
   enable_imdb: true
   enable_vision: false
-  enable_sdh: false
+  enable_sdh: true
   write_debug_json: true
 
 providers:
-  asr: stub
-  diarization: stub
-  ocr: tesseract
-  imdb: local_tsv
-  vision: stub
+  asr:
+    provider: whisperx
+    model: large-v3
+    device: cuda
+    compute_type: float16
+    batch_size: 16
+    language: null
+  diarization:
+    provider: pyannote
+    model: pyannote/speaker-diarization-community-1
+    device: cuda
+    token_env: HUGGINGFACE_TOKEN
+    use_exclusive: true
+    min_speakers: null
+    max_speakers: null
+    segmentation_batch_size: 16
+    embedding_batch_size: 16
+  ocr:
+    provider: tesseract
+  imdb:
+    provider: local_tsv
+  vision:
+    provider: stub
+
+voiceprints:
+  min_score: 0.78
+  min_margin: 0.04
+  enroll_mapped_speakers: true
 
 paths:
   imdb_dir: data/imdb
   cache_dir: data/cache
   work_dir: data/work
+  voiceprints_dir: data/voiceprints
