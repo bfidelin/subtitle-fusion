@@ -41,17 +41,19 @@ Evidence/correction:
 | pyannote diarization/embeddings | implemented | preserve/consume evidence downstream |
 | media ffprobe inventory | implemented | quality-gated extraction/reference selection |
 | Netflix-style fr-FR formatter | implemented | shared shot-map integration + broader QC |
+| SRT export | implemented | collision-aware placement extensions |
 | voiceprint store | implemented | enrollment/continuity UX |
 | PANNs verifier adapter | partial/optional | cheap scout before verifier |
 | existing subtitle reuse | planned | language/coverage/sync/lexical quality gate |
 | global sync repair | planned | VAD/FFT-style fast preflight |
 | alternate-edit alignment | planned | piecewise/split fallback |
-| shot map | planned | compute/cache once; reuse timing/OCR/ASD |
+| shot map | planned | compute/cache once; reuse timing/OCR/ASD/layout |
 | sparse video OCR | planned | Paddle detector -> tracks/hash -> crop OCR |
+| collision-aware SRT placement | planned | OCR/shot evidence -> stable `{\an8}`/bottom choice |
 | active speaker | planned | sparse LR-ASD first |
-| IMSC 1.3 master | planned | exporter + validator + fixtures |
 | benchmark harness | planned | `output.benchmark.json` |
 | warm season worker | planned | resident models + bounded GPU queue |
+| IMSC/TTML | inactive/deferred | no runtime work unless explicitly re-enabled |
 
 ## Key configs
 - `config/settings.yaml`: runtime/preflight/OCR/voiceprint/cache policy
@@ -60,7 +62,7 @@ Evidence/correction:
 - `config/audio_analysis.yaml`: scout -> verifier audio/music policy
 
 ## Key docs
-- `docs/STANDARDS_AND_PRACTICES.md`: professional timed-text/translation/SDH rules
+- `docs/STANDARDS_AND_PRACTICES.md`: professional timed-text/translation/SDH/SRT-layout rules
 - `docs/TRANSLATOR_QC_CHECKLIST.md`: practical translation, proofreading, proper-name, SDH and final-QC workflow
 - `docs/PERFORMANCE_REFERENCES.md`: benchmark sources and useful videos
 - `docs/PERFORMANCE_TARGETS.md`: performance decisions and benchmark contract
@@ -75,10 +77,26 @@ Evidence/correction:
 - An embedded subtitle track is a candidate reference, not automatic truth.
 - Diarization speaker IDs are not character identities.
 - Character identity is not visual visibility.
-- Shot boundaries should become shared cached evidence for timing, OCR and ASD.
+- Shot boundaries should become shared cached evidence for timing, OCR, ASD and layout stability.
 - Existing subtitle tracks should be scored/reused before expensive regeneration.
 - Full OCR on every video frame and full-episode Demucs are forbidden default paths.
 - Translation, semantic review, linguistic proofreading, subtitle adaptation and timing are separate stages.
+- SRT is the primary playback output.
+- IMSC/TTML is inactive and must not be added to runtime or roadmap without an explicit future decision.
+
+## SRT placement target
+
+```text
+OCR/text boxes + shot map
+        |
+        +-> lower region free -> normal bottom placement
+        |
+        +-> important text collision -> top placement (`{\an8}` on supported Jellyfin profile)
+        |
+        `-> keep placement sticky through the shot/sequence
+```
+
+Positioning tags are a playback compatibility extension, not portable SRT standard behavior. Keep debug evidence and safe fallback semantics.
 
 ## Source/reference routing target
 
@@ -100,8 +118,8 @@ For PGS/image subtitles, prefer subtitle-event bitmap OCR before scanning arbitr
 3. VAD/FFT-style global sync preflight and piecewise fallback
 4. deterministic post-ASR segmentation/QC with CPS + WPM + shot-aware timing
 5. sparse Paddle text detection/tracking/crop OCR
-6. finish voiceprint enrollment UX/identity continuity
-7. YAMNet-class audio scout -> PANNs verifier
-8. sparse LR-ASD active-speaker provider
-9. IMSC 1.3 exporter + validator
+6. collision-aware SRT placement
+7. finish voiceprint enrollment UX/identity continuity
+8. YAMNet-class audio scout -> PANNs verifier
+9. sparse LR-ASD active-speaker provider
 10. benchmark harness + warm season worker
