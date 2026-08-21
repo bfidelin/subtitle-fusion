@@ -45,9 +45,12 @@ Useful videos:
 - PANNs: https://github.com/qiuqiangkong/audioset_tagging_cnn
 - PANNs inference: https://github.com/qiuqiangkong/panns_inference
 - PANNs demos: https://www.youtube.com/watch?v=QyFNIhRxFrY and https://www.youtube.com/watch?v=7TEtDMzdLeY
-- Demucs: https://github.com/facebookresearch/demucs
+- Demucs official maintained fork: https://github.com/adefossez/demucs
+- legacy Meta repo (archived/read-only since 2025): https://github.com/facebookresearch/demucs
 - Demucs video: https://www.youtube.com/watch?v=BttaeQaO80E
 - Essentia: https://essentia.upf.edu/ and https://github.com/MTG/essentia
+
+Demucs note (verified 2026-08-21): `adefossez/demucs` is the official repository to follow after Alexandre Défossez left Meta. It is still **Demucs v4 / Hybrid Transformer Demucs**, not a new v5 release. The maintainer states that the project receives important fixes but is not under active feature development. For our use case, `htdemucs` remains the first model to benchmark and `htdemucs_ft` remains an optional higher-cost quality escalation. Run source separation only on selected vocal/music windows.
 
 ### OCR / text detection
 - PaddleOCR detector docs: https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/module_usage/text_detection.en.md
