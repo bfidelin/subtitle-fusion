@@ -10,9 +10,10 @@ speaker_labels:
   reveal_name_only_if_known_in_story: true
   output_style:
     srt: "colon"
-    ass: "bracket"
+    ass: "colon"
 
 sounds:
+  enabled: true
   include_plot_pertinent_only: true
   include_music_mood: true
   include_obvious_visible_actions: false
