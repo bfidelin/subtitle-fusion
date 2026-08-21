@@ -151,6 +151,8 @@ Default policy:
 
 OpenVINO `horizontal-text-detection-0001` remains a useful horizontal specialist and alternative device path.
 
+The same tracked text boxes should also feed subtitle placement. Do not run a second detector just to decide whether an SRT cue should move to the top.
+
 See `docs/PERFORMANCE_REFERENCES.md`.
 
 ## 7. Post-ASR segmentation is its own deterministic stage
@@ -172,13 +174,14 @@ stable-ts development was reported paused during this research pass, so treat it
 Reference:
 - https://github.com/jianfch/stable-ts
 
-## 8. Shot map: compute once, use four times
+## 8. Shot map: compute once, use everywhere
 
 Shot detection is valuable to multiple branches:
 - professional cue timing
 - OCR sampling
 - active-speaker/face-track reset
 - detection of recaps/intros/scene discontinuities
+- subtitle placement stability/reset
 
 Do not run separate scene detectors for each branch.
 
@@ -190,7 +193,7 @@ References:
 - https://github.com/SubtitleEdit/subtitleedit
 - https://github.com/SubtitleEdit/subtitleedit/blob/main/docs/overview.md
 
-## 9. Deterministic fix/QC pipeline
+## 9. Deterministic fix/QC/layout pipeline
 
 Subtitle Edit demonstrates the value of many small deterministic operations instead of one opaque rewrite. Adopt the same philosophy:
 - normalize
@@ -200,7 +203,8 @@ Subtitle Edit demonstrates the value of many small deterministic operations inst
 - shot snap
 - CPS/WPM warnings
 - spelling/duplicate/common-error checks
-- render
+- collision-aware placement
+- render SRT
 
 Every fix should declare whether it is:
 - semantic or non-semantic
@@ -209,11 +213,34 @@ Every fix should declare whether it is:
 
 Keep original text and timings in debug evidence.
 
+### SRT collision-aware placement
+
+SRT remains the primary playback target. On the supported Jellyfin/Android TV profile, use compatibility positioning extensions only when useful:
+
+```text
+bottom-center default
+  -> lower-screen OCR collision
+  -> top-center (`{\an8}`)
+  -> keep sticky until the shot/sequence makes a safe transition
+```
+
+Placement should be cheap because it reuses OCR boxes and shot boundaries already computed for other purposes.
+
+Track:
+- collision count
+- placement reason/confidence
+- top/bottom decision
+- number of placement switches
+- sequence/shot stickiness
+
+Do not introduce IMSC/TTML simply to solve positioning; it is inactive in this project.
+
 Subtitle Edit also exposes both CPS and WPM and has dedicated shot-change tooling; we should report both metrics.
 
 References:
 - https://github.com/SubtitleEdit/subtitleedit/blob/main/docs/overview.md
 - https://github.com/SubtitleEdit/subtitleedit/blob/main/change-log.txt
+- https://subtitleedit.github.io/subtitleedit/reference/subrip.html
 
 ## 10. Speaker identity / active speaker
 
@@ -264,6 +291,7 @@ Examples:
 - voiceprint: require similarity + margin
 - OCR: require detector/recognizer confidence + temporal stability for corrections
 - translation: require semantic consistency and glossary checks
+- placement: move only when collision evidence is meaningful; avoid unstable ping-pong
 - source separation: only if candidate window is vocal music and expected benefit is non-trivial
 
 ffsubsync 0.5 explicitly added `--skip-sync-on-low-quality`; adopt the same fail-safe principle globally.
@@ -282,6 +310,7 @@ For every provider/stage record:
 - candidate/escalation rate
 - OCR boxes/tracks/crops
 - OCR cache hit ratio
+- SRT collision/placement decisions and switch count
 - active-speaker speech-window duration
 - audio-event candidate-window duration
 - Demucs processed duration
@@ -296,13 +325,15 @@ External benchmark numbers are architecture hints; local warm/cold measurements 
 
 ## 15. Recommended implementation order
 
-1. media preflight: embedded subtitle/audio inventory + shared cache/fingerprint
+1. quality-gated existing-track selection using the already implemented media preflight
 2. shot map computed once
-3. sync/VAD quality preflight and existing-track reuse
+3. sync/VAD quality preflight and piecewise fallback
 4. deterministic segmentation/QC stage with CPS + WPM
 5. sparse text detector + crop tracker/cache
-6. per-series voiceprint matching
-7. YAMNet/scout -> PANNs verifier
-8. sparse LR-ASD/active-speaker provider
-9. IMSC 1.3 exporter + validation
+6. collision-aware SRT placement from OCR/shot evidence
+7. per-series voiceprint integration
+8. YAMNet/scout -> PANNs verifier
+9. sparse LR-ASD/active-speaker provider
 10. benchmark harness + season worker/model residency
+
+IMSC/TTML is intentionally outside the active optimization and implementation roadmap.
