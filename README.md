@@ -9,12 +9,14 @@ Production-oriented Python project to generate enriched subtitles from video by 
 - optional actor/face hints
 - rule-based fusion and SDH output
 - audio-event, music, and track-recognition hooks
+- Netflix-style French (France) formatting and compliance checks
 
 ## Planned outputs
 
 - `output.debug.json`
 - `output.srt`
 - `output.ass`
+- `output.netflix-report.json`
 
 ## Initial layout
 
@@ -30,6 +32,7 @@ subtitle_fusion/
 │  └─ audio_analysis.yaml
 ├─ docs/
 │  ├─ SDH_STYLE_GUIDE.md
+│  ├─ NETFLIX_FR_STYLE.md
 │  └─ AUDIO_EVENTS_AND_MUSIC.md
 ├─ src/
 │  ├─ main.py
@@ -38,13 +41,15 @@ subtitle_fusion/
 │  ├─ scoring.py
 │  ├─ imdb_index.py
 │  ├─ fusion.py
+│  ├─ netflix_style.py
 │  ├─ exporters.py
 │  ├─ audio_music.py
 │  └─ track_recognition.py
 └─ tests/
    ├─ test_scoring.py
    ├─ test_fusion.py
-   └─ test_imdb_index.py
+   ├─ test_imdb_index.py
+   └─ test_netflix_style.py
 ```
 
 ## Core design
@@ -58,6 +63,24 @@ The pipeline should only auto-correct uncertain segments, using evidence in this
 5. phonetic similarity
 
 Raw ASR text must always be preserved alongside corrected text.
+
+## Netflix-style French output
+
+`src/netflix_style.py` and the `netflix` section of `config/style_rules.yaml` apply a French (France) timed-text profile before export.
+
+Current checks/formatting include:
+
+- 42 visible characters maximum per line
+- 2 lines maximum
+- syntactic/bottom-heavy line breaking when possible
+- 5/6 second minimum duration and 7 second maximum
+- 17 CPS preferred target and 20 CPS French SDH ceiling
+- 2-frame minimum inter-subtitle gap
+- chaining of short gaps below half a second when safe
+- no silent truncation or paraphrasing to satisfy layout limits
+- a machine-readable `output.netflix-report.json` for remaining violations
+
+See `docs/NETFLIX_FR_STYLE.md` for the official Netflix references and the distinction between Netflix-style compliance and an official Netflix delivery package.
 
 ## SDH policy
 
@@ -73,6 +96,20 @@ Highlights:
 - do not reveal unrevealed names too early
 - include only plot-pertinent or tonally relevant sound labels
 - preserve raw ASR text and corrected text separately
+- use French bracketed/lowercase generic SDH labels
+
+## Confidence and proper-name review
+
+The existing scoring layer marks low-confidence ASR words and proper-noun candidates for contextual review. The fusion layer can combine OCR matches with title-scoped IMDb character/actor candidates before auto-correcting. This is intentionally conservative.
+
+Still to be wired end-to-end:
+
+- real OCR extraction from video frames (the OCR data model and fusion hooks already exist)
+- translation confidence distinct from ASR confidence
+- grammar, spelling and punctuation proofreading
+- context-aware linguistic rewriting without semantic drift
+- episode/show glossary and continuity checks for recurring proper names
+- a second-pass reviewer that can reject unsafe translation/correction suggestions
 
 ## Audio and music policy
 
@@ -105,10 +142,9 @@ subtitle-fusion run \
 
 ## Next steps
 
-- wire `style_rules.yaml` into runtime rendering
+- replace stub segments with real ASR/diarization input
+- wire real OCR frame extraction and title/name harvesting
+- add translation + linguistic QA confidence and second-pass review
+- add shot-change-aware Netflix timing
 - wire `audio_analysis.yaml` into audio/music providers
-- add models and scoring refinements
-- add IMDb TSV loader improvements
-- add fusion engine refinements
-- add exporters improvements
 - add non-stub providers and end-to-end tests
