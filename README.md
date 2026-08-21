@@ -75,7 +75,8 @@ MKV / MP4
                          |
               deterministic subtitle QC
                          |
-         debug JSON + SRT + ASS + future IMSC
+              debug JSON + SRT
+                   + optional ASS
 ```
 
 ## Professional standards
@@ -103,9 +104,19 @@ Current profile/QC includes:
 
 The important next timing extension is **shot-aware timing**. Subtitle boundaries must use both the waveform and edit/shot structure; a formatter may not silently rewrite meaning to make metrics pass.
 
-### Standards master direction
+### SRT-first output policy
 
-SRT remains the compatibility-first playback target and ASS the rich local target. For a standards-based rich interchange/archive format, the project direction is **W3C IMSC Text Profile 1.3 (TTML2)**, which became a W3C Recommendation in May 2026. Do not claim IMSC compliance until the exporter and validator exist.
+**SRT is the primary playback format for this project.** The rich evidence model remains internal/debug data; it does not require a rich playback format.
+
+For Jellyfin/Android TV compatibility, dynamic placement can later be emitted as SRT positioning extensions where supported, for example:
+
+```srt
+{\an8}Subtitle moved to the top to avoid on-screen text.
+```
+
+The intended placement engine will use OCR/text boxes, shot continuity and later face/important-region evidence to choose a stable region and avoid ping-pong between top/bottom. This positioning logic is **planned, not implemented yet**.
+
+ASS remains optional. **IMSC/TTML is deliberately inactive and deferred:** there is no exporter, no dependency, no generated IMSC file and no active implementation task. It may remain documented only as standards research/reference unless explicitly re-enabled later.
 
 ## Translation and proofreading
 
@@ -147,6 +158,8 @@ Local detector order to benchmark:
 3. OpenVINO `horizontal-text-detection-0001`
 
 Around newly appearing text, temporarily increase sampling to roughly 2–5 fps, then drop back down after the text track stabilizes.
+
+The same OCR/text bounding boxes should later feed the SRT placement engine, so text detection can both recognize on-screen content and tell the renderer where **not** to place dialogue subtitles.
 
 ## Speaker identity
 
@@ -239,6 +252,8 @@ Current outputs:
 - `output.ass`
 - `output.netflix-report.json` when the Netflix profile is enabled
 
+No IMSC/TTML file is generated.
+
 ## Next implementation order
 
 1. select/extract/reuse existing subtitle tracks with language/coverage/sync/quality gates (**preflight inventory is already implemented**)
@@ -246,10 +261,12 @@ Current outputs:
 3. add cheap VAD/global sync quality preflight, then piecewise fallback for alternate edits
 4. make post-ASR segmentation/QC deterministic with CPS + WPM + shot-aware rules
 5. implement sparse Paddle text detector + track/cache + crop recognizer
-6. connect voiceprints to character identity enrollment/matching
-7. connect YAMNet-class scout -> PANNs verifier
-8. add sparse LR-ASD active-speaker provider
-9. add IMSC 1.3 exporter + validator
+6. add collision-aware SRT placement using OCR/shot evidence
+7. connect voiceprints to character identity enrollment/matching
+8. connect YAMNet-class scout -> PANNs verifier
+9. add sparse LR-ASD active-speaker provider
 10. add benchmark harness and warm season worker/model residency
+
+IMSC is intentionally **not** in the active roadmap.
 
 Agent rules are in [`AGENTS.md`](AGENTS.md).

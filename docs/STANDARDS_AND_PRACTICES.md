@@ -6,23 +6,62 @@ This document is the normative decision record for subtitle-fusion. It distingui
 
 ## 1. Output strategy
 
-Keep one rich internal evidence model and derive delivery formats from it.
+Keep one rich internal evidence model and derive simple delivery files from it.
 
-Recommended output hierarchy:
+Active output hierarchy:
 
 1. `output.debug.json` — canonical evidence/debug artifact; never discard raw ASR/OCR/diarization evidence.
-2. **IMSC Text Profile 1.3 / TTML2** — target rich interchange/master format for standards-based captions/subtitles.
-3. SRT — compatibility-first playback output (simple, robust, intentionally lossy).
-4. ASS — rich local playback/styling output.
-5. WebVTT — web delivery profile when needed.
+2. **SRT** — primary playback output for Jellyfin/Android TV compatibility.
+3. ASS — optional rich local output; not required by the main playback path.
+4. WebVTT — only if a web delivery use case is added later.
 
-IMSC Text Profile 1.3 became a W3C Recommendation on 2026-05-21 and is intended for worldwide subtitle/caption delivery. Do not claim IMSC compliance until an exporter is implemented and validated against the profile.
+### IMSC / TTML status
 
-References:
+W3C IMSC Text Profile 1.3 remains useful standards background, but it is **inactive in subtitle-fusion**:
+- no exporter
+- no runtime dependency
+- no generated IMSC/TTML artifact
+- no active implementation milestone
+- no CI/profile-validation requirement
+
+Do not add IMSC/TTML work unless it is explicitly re-enabled in a future decision.
+
+Historical/reference material:
 - https://www.w3.org/news/2026/imsc-text-profile-1-3-is-now-a-w3c-recommendation/
 - https://www.w3.org/TR/ttml-imsc1.3/
-- https://www.w3.org/standards/history/ttml-imsc1.3/
 - https://tech.ebu.ch/publications/tech3380
+
+### SRT placement policy
+
+SRT remains the primary output even when collision avoidance is needed. Some Jellyfin/Android TV playback paths support ASS-style alignment tags embedded in SRT, such as:
+
+```srt
+{\an8}Subtitle moved to the top.
+```
+
+Treat these as **compatibility extensions**, not portable SRT standard features. The renderer must preserve a safe fallback when a player ignores them.
+
+Planned placement logic:
+- bottom-center by default
+- move to top-center when plot-relevant on-screen text occupies the lower subtitle region
+- use OCR/text bounding boxes as avoidance evidence
+- later include face/important-region boxes where useful
+- keep placement stable across a shot/sequence to avoid top/bottom ping-pong
+- prefer changing placement at shot boundaries when possible
+- retain placement reason/confidence in debug evidence
+
+Suggested debug fields:
+- `placement_region`
+- `placement_confidence`
+- `placement_reason`
+- `avoid_boxes`
+- `sticky_until`
+
+Placement tags are **planned, not implemented yet**.
+
+References for the compatibility behavior:
+- https://jellyfin.org/posts/androidtv-v0.18.0/
+- https://subtitleedit.github.io/subtitleedit/reference/subrip.html
 
 ## 2. Netflix French profile
 
@@ -43,6 +82,7 @@ Official references:
 - avoid one/two-word orphan top lines
 - do not split tightly bound units such as article+noun, adjective+noun, subject+verb when avoidable
 - never silently truncate/paraphrase merely to satisfy layout
+- avoid covering plot-relevant on-screen text when a supported placement alternative is available
 
 ### Timing
 
@@ -64,6 +104,7 @@ Compute a shot map once and reuse it for:
 - OCR sampling
 - active-speaker sampling
 - scene/recap boundary detection
+- placement stability/reset decisions
 
 Within the Netflix half-second shot-change window, cue boundaries may be moved to the cut to produce stable timing. Preserve the 2-frame gap.
 
@@ -118,6 +159,11 @@ Include on-screen text only when plot-pertinent. If dialogue and on-screen text 
 - short on-screen-text FNs may use ALL CAPS in the Netflix fr-FR profile
 - long letters/messages/prologues should favor readable sentence case/italics
 - preserve the raw OCR string and confidence in debug data
+- use the OCR bounding box as layout-avoidance evidence even when the OCR text itself is not emitted as a subtitle
+
+This creates two separate uses for video text detection:
+1. semantic evidence: what does the on-screen text say?
+2. layout evidence: where should dialogue subtitles not be placed?
 
 ## 5. Translation best practices
 
@@ -170,9 +216,10 @@ normalize encoding/whitespace
   -> min/max duration and gap rules
   -> shot-aware snapping/chaining
   -> CPS + WPM + line-count/CPL checks
+  -> OCR/face collision-aware placement decision
   -> SDH density / speaker-label checks
-  -> render
-  -> format validation
+  -> render SRT
+  -> playback/profile validation
 ```
 
 Safe auto-fixes must never silently change dialogue meaning.
@@ -203,20 +250,24 @@ Add at least these QC checks:
 - redundant forced narrative
 - excessive repeated speaker labels
 - unknown/low-confidence proper name
+- collision with plot-relevant on-screen text
+- excessive placement switching inside one shot/sequence
 
 ## 8. Validation / interoperability
 
 Borrow the EBU approach of validators and processing nodes: each transformation should be independently inspectable and testable.
 
-Relevant EBU resources:
+Relevant EBU resources remain useful as architectural prior art:
 - EBU-TT-D: https://tech.ebu.ch/publications/tech3380
 - EBU-TT Live toolkit: https://github.com/ebu/ebu-tt-live-toolkit
 - EBU Timed Text schemas: https://github.com/ebu/ebu-tt-d-xsd
 
-When IMSC export lands, add:
-- schema/profile validation in CI
-- round-trip tests on style/position/speaker metadata
+For the active SRT path, add:
 - golden fixtures for accented French, overlapping speakers, music, forced narrative and shot-change timing
+- Jellyfin-compatible positioning fixtures (`{\an8}` / bottom fallback)
+- tests proving unsupported positioning tags do not alter dialogue text
+- collision/placement debug-evidence tests
+- playback smoke tests when a Jellyfin/Android TV test environment is available
 
 ## 9. Non-negotiable project rules
 
@@ -225,4 +276,6 @@ When IMSC export lands, add:
 - formatters cannot invent semantic content
 - expensive computation is gated by cheap evidence
 - timing decisions use audio *and* edit/shot structure
+- SRT is the primary playback output
+- IMSC/TTML remains inactive unless explicitly re-enabled
 - local benchmark/QC reports are authoritative over guessed performance

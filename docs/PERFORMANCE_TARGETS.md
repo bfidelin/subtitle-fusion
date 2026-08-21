@@ -24,6 +24,7 @@ Already implemented:
 - Netflix-style fr-FR formatter/validator
 - per-series voiceprint store
 - optional PANNs verifier adapter
+- SRT/ASS/debug JSON export
 
 Not yet implemented end-to-end:
 - automatic reuse of an embedded text track
@@ -31,10 +32,12 @@ Not yet implemented end-to-end:
 - piecewise alternate-edit alignment
 - shared cached shot map
 - sparse Paddle OCR pipeline
+- collision-aware SRT placement
 - YAMNet-class scout before PANNs
 - LR-ASD active speaker
-- IMSC 1.3 export/validation
 - benchmark harness / warm season worker
+
+IMSC/TTML is intentionally inactive: no exporter, dependency, output or active implementation milestone.
 
 Do not describe planned items as runtime-complete.
 
@@ -62,7 +65,10 @@ pyannote           detection        only candidates
                     |
              deterministic QC
                     |
-        SRT / ASS / future IMSC
+          collision-aware layout
+                    |
+             SRT + debug JSON
+               + optional ASS
 ```
 
 Do not sum standalone model times when branches can safely run in parallel, but do not create GPU contention that makes the critical path slower.
@@ -121,12 +127,28 @@ Policy:
 
 Full OCR on every frame is forbidden as a normal path.
 
+OCR/text bounding boxes are shared evidence: they should later feed both semantic OCR and subtitle collision avoidance.
+
+### SRT placement
+SRT remains the primary playback output.
+
+Planned collision-aware placement should:
+- default to bottom-center
+- move to top-center when lower-screen plot-relevant text would be covered
+- use Jellyfin-compatible alignment extensions such as `{\an8}` only on the supported playback profile
+- preserve a safe text fallback if a player ignores positioning tags
+- keep placement sticky across a shot/sequence rather than switching every cue
+- reuse OCR boxes and shot-map evidence rather than running another detector
+
+Measure placement work as part of postprocessing/QC, not as a separate heavy model branch.
+
 ### Shot detection
 Compute one shot map and reuse it for:
 - Netflix timing
 - OCR sampling
 - ASD/face-track refresh
 - structural discontinuity detection
+- subtitle placement stability/reset
 
 Treat shot-map construction as shared infrastructure rather than one model feature.
 
@@ -196,6 +218,7 @@ These are design budgets, not hard promises:
 | diarization overhead | overlap with ASR where implementation permits; otherwise keep well below ASR cost |
 | sparse text detection | seconds to <1 min |
 | actual OCR recognition | only a small fraction of detector frames |
+| SRT placement/QC | seconds; reuse existing OCR/shot evidence |
 | sound scout/verifier | below ASR critical path |
 | voiceprints/fusion/QC/export | seconds |
 | sparse ASD | <= ~1–2 min additional in rich mode |
@@ -221,6 +244,7 @@ Per run write `output.benchmark.json` with:
 - source/reference track chosen and quality scores
 - sync fit mode (`none`, `global`, `rate`, `piecewise`)
 - OCR detector frames / tracks / recognition crops / cache ratio
+- subtitle placement decisions / collision count / position switches
 - ASD speech duration / frames/faces processed
 - PANNs candidate duration
 - Demucs processed duration
@@ -238,6 +262,7 @@ A performance-sensitive change is accepted when:
 - fallback/escalation rate remains bounded
 - quality gate rejects implausible automatic corrections
 - source/template reuse does not hide missing dialogue, wrong language or alternate-edit mismatch
+- placement avoids collisions without unstable top/bottom oscillation
 
 ## Next implementation sequence
 
@@ -246,8 +271,10 @@ A performance-sensitive change is accepted when:
 3. global sync/VAD quality preflight + piecewise fallback
 4. deterministic segmentation + expanded QC (CPS/WPM/shot-aware)
 5. sparse OCR detector/tracker/cache
-6. voiceprint integration
-7. audio scout -> PANNs verifier
-8. sparse active-speaker provider
-9. IMSC 1.3 exporter/validator
+6. collision-aware SRT placement using OCR/shot evidence
+7. voiceprint integration
+8. audio scout -> PANNs verifier
+9. sparse active-speaker provider
 10. benchmark harness + season worker/model residency
+
+IMSC/TTML is deliberately outside the active roadmap.
