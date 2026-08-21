@@ -6,11 +6,12 @@ This is the short orientation guide. Detailed rules live in `AGENTS.md` and the 
 1. `AGENTS.md`
 2. `README.md`
 3. `docs/STANDARDS_AND_PRACTICES.md`
-4. `docs/PERFORMANCE_TARGETS.md`
-5. `docs/OPTIMIZATION_PLAYBOOK.md`
-6. `docs/FAST_SCOUT_PIPELINE.md`
-7. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
-8. relevant provider/config/tests
+4. `docs/TRANSLATOR_QC_CHECKLIST.md`
+5. `docs/PERFORMANCE_TARGETS.md`
+6. `docs/OPTIMIZATION_PLAYBOOK.md`
+7. `docs/FAST_SCOUT_PIPELINE.md`
+8. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
+9. relevant provider/config/tests
 
 ## Current implemented runtime
 
@@ -32,6 +33,26 @@ Evidence/correction:
 - `src/fusion.py`: conservative correction decisions
 - `src/imdb_index.py`: title-scoped IMDb evidence
 
+## Implemented vs planned
+
+| Area | Status | Next step |
+|---|---|---|
+| WhisperX ASR/alignment | implemented | selective/local re-ASR only |
+| pyannote diarization/embeddings | implemented | preserve/consume evidence downstream |
+| media ffprobe inventory | implemented | quality-gated extraction/reference selection |
+| Netflix-style fr-FR formatter | implemented | shared shot-map integration + broader QC |
+| voiceprint store | implemented | enrollment/continuity UX |
+| PANNs verifier adapter | partial/optional | cheap scout before verifier |
+| existing subtitle reuse | planned | language/coverage/sync/lexical quality gate |
+| global sync repair | planned | VAD/FFT-style fast preflight |
+| alternate-edit alignment | planned | piecewise/split fallback |
+| shot map | planned | compute/cache once; reuse timing/OCR/ASD |
+| sparse video OCR | planned | Paddle detector -> tracks/hash -> crop OCR |
+| active speaker | planned | sparse LR-ASD first |
+| IMSC 1.3 master | planned | exporter + validator + fixtures |
+| benchmark harness | planned | `output.benchmark.json` |
+| warm season worker | planned | resident models + bounded GPU queue |
+
 ## Key configs
 - `config/settings.yaml`: runtime/preflight/OCR/voiceprint/cache policy
 - `config/scoring.yaml`: correction thresholds
@@ -40,6 +61,7 @@ Evidence/correction:
 
 ## Key docs
 - `docs/STANDARDS_AND_PRACTICES.md`: professional timed-text/translation/SDH rules
+- `docs/TRANSLATOR_QC_CHECKLIST.md`: practical translation, proofreading, proper-name, SDH and final-QC workflow
 - `docs/PERFORMANCE_REFERENCES.md`: benchmark sources and useful videos
 - `docs/PERFORMANCE_TARGETS.md`: performance decisions and benchmark contract
 - `docs/OPTIMIZATION_PLAYBOOK.md`: prior art from ffsubsync, Alass, Subtitle Edit, stable-ts
@@ -49,14 +71,31 @@ Evidence/correction:
 
 ## Important architecture boundaries
 - WhisperX is the global ASR baseline; do not add a redundant full Faster-Whisper pass.
+- Media preflight inventory already exists; do not build a second scanner.
+- An embedded subtitle track is a candidate reference, not automatic truth.
 - Diarization speaker IDs are not character identities.
 - Character identity is not visual visibility.
 - Shot boundaries should become shared cached evidence for timing, OCR and ASD.
 - Existing subtitle tracks should be scored/reused before expensive regeneration.
 - Full OCR on every video frame and full-episode Demucs are forbidden default paths.
+- Translation, semantic review, linguistic proofreading, subtitle adaptation and timing are separate stages.
+
+## Source/reference routing target
+
+```text
+media preflight
+  -> candidate embedded subtitle
+      -> quality + language + sync score
+          -> good + synced: reuse/enrich
+          -> good + global drift: repair/reuse
+          -> alternate edit: piecewise align
+          -> poor/incomplete: WhisperX baseline
+```
+
+For PGS/image subtitles, prefer subtitle-event bitmap OCR before scanning arbitrary video frames.
 
 ## Highest-value next steps
-1. wire media preflight to extraction/reference selection with quality gates
+1. quality-gated extraction/reference selection using the existing media preflight
 2. shared cached shot map
 3. VAD/FFT-style global sync preflight and piecewise fallback
 4. deterministic post-ASR segmentation/QC with CPS + WPM + shot-aware timing
