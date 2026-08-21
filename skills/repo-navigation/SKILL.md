@@ -1,91 +1,126 @@
 # Repo navigation skill
 
 ## Purpose
-Help a coding agent enter this repository quickly and make safe changes.
+Help Codex, Pi or another coding agent make safe, performance-aware subtitle changes quickly.
 
-## Goal of the repository
-The project builds enriched subtitles from video using:
-- ASR output and uncertainty markers
-- OCR from frames
-- IMDb title and character context
-- SDH style rules
-- optional audio-event, music, track-recognition, and lyric-assistance hooks
+## Fast entry
+1. `AGENTS.md`
+2. `docs/STANDARDS_AND_PRACTICES.md`
+3. `docs/PERFORMANCE_TARGETS.md`
+4. `docs/OPTIMIZATION_PLAYBOOK.md`
+5. `README.md`
+6. relevant provider/config/tests
 
-## Fast entry sequence
-1. Read `AGENTS.md`
-2. Read `docs/REPO_MAP.md`
-3. Read `README.md`
-4. Read the relevant policy doc:
-   - `docs/SDH_STYLE_GUIDE.md`
-   - `docs/AUDIO_EVENTS_AND_MUSIC.md`
-5. Read the relevant config file under `config/`
-6. Read the code file you plan to modify
-7. Read the matching test file under `tests/`
+Use `docs/PERFORMANCE_REFERENCES.md` before making model-speed/device/sampling claims.
 
-## If the task is about...
-### Subtitle text correction
+## Task routes
+
+### ASR / timestamps
+Read:
+- `src/whisperx_provider.py`
+- `src/models.py`
+- `config/settings.yaml`
+- `docs/WHISPERX_PYANNOTE_RUNTIME.md`
+
+WhisperX already uses Faster-Whisper. Extra ASR must be selective/local unless measured otherwise.
+
+### Media preflight / existing tracks
+Read:
+- `src/media_preflight.py`
+- `docs/OPTIMIZATION_PLAYBOOK.md`
+- `config/settings.yaml`
+
+Prefer reusable text subtitle evidence first; prefer PGS/event OCR before arbitrary whole-frame OCR.
+
+### Diarization / speaker identity
+Read:
+- `src/whisperx_provider.py`
+- `src/voiceprints.py`
+- `src/models.py`
+- `tests/test_voiceprints.py`
+
+Keep acoustic speaker ID, character identity and visual visibility separate. Voiceprint matching requires score + second-best margin.
+
+### SDH / professional timing / translation
+Read:
+- `docs/STANDARDS_AND_PRACTICES.md`
+- `docs/NETFLIX_FR_STYLE.md`
+- `docs/SDH_STYLE_GUIDE.md`
+- `src/netflix_style.py`
+- `src/exporters.py`
+- `config/style_rules.yaml`
+
+Shot timing is first-class. Formatters may make safe layout/timing changes but may not silently rewrite semantic content.
+
+### Video text / OCR
+Read:
+- `docs/PERFORMANCE_TARGETS.md`
+- `docs/PERFORMANCE_REFERENCES.md`
+- `docs/OPTIMIZATION_PLAYBOOK.md`
+- `config/settings.yaml`
+
+Required architecture:
+```text
+shot cuts + sparse samples
+ -> cheap text detector
+ -> track boxes + perceptual hash
+ -> OCR new/changed crops only
+ -> temporal voting
+```
+
+Default detector candidates: PP-OCRv5 mobile, PP-OCRv6 tiny, OpenVINO horizontal specialist. Full OCR on every frame is not an acceptable default.
+
+### Audio events / music / lyrics
+Read:
+- `src/audio_music.py`
+- `config/audio_analysis.yaml`
+- `docs/AUDIO_EVENTS_AND_MUSIC.md`
+- `docs/OPTIMIZATION_PLAYBOOK.md`
+
+Use cheap scout -> PANNs verifier. Demucs/source separation is selected vocal-music windows only.
+
+### Active speaker / off-screen
 Read:
 - `src/models.py`
-- `src/scoring.py`
-- `src/fusion.py`
-- `tests/test_scoring.py`
-- `tests/test_fusion.py`
-- `tests/test_uncertain_words.py`
+- `docs/PERFORMANCE_TARGETS.md`
+- `docs/STANDARDS_AND_PRACTICES.md`
 
-### Speaker labels or SDH output
-Read:
-- `docs/SDH_STYLE_GUIDE.md`
-- `config/style_rules.yaml`
-- `src/exporters.py`
+Benchmark LR-ASD before TalkNet. Analyze speech windows only, reuse face tracks and never infer off-screen from a failed face detector.
 
-### IMDb or character disambiguation
+### Synchronization / alignment optimization
 Read:
-- `src/imdb_index.py`
-- `src/fusion.py`
-- `docs/SDH_STYLE_GUIDE.md`
+- `docs/OPTIMIZATION_PLAYBOOK.md`
+- `docs/STANDARDS_AND_PRACTICES.md`
 
-### Audio events, music, or lyrics
+Try cheap global VAD/subtitle sync and quality scoring before expensive word-level repair. Escalate to piecewise alignment only for alternate edits/cuts/drift.
+
+### Performance / profiling
 Read:
-- `docs/AUDIO_EVENTS_AND_MUSIC.md`
-- `config/audio_analysis.yaml`
-- `src/audio_music.py`
-- `src/track_recognition.py`
-- `src/pipeline.py`
+- `docs/PERFORMANCE_TARGETS.md`
+- `docs/PERFORMANCE_REFERENCES.md`
+- `docs/OPTIMIZATION_PLAYBOOK.md`
+
+Record cold/warm timing, RTF/FPS, pre/infer/post splits, RAM/VRAM, cache hits and scout escalation rates. Local measurements override web projections.
 
 ## Stable rules
-- Do not overwrite `text_raw`.
-- Use `decision` and `text_corrected` for corrections.
-- Prefer small, local changes.
-- Add or update tests with behavior changes.
-- Keep visible subtitle output concise.
-- Prefer metadata/debug JSON for rich evidence.
-- Do not reveal character names before the story reveals them.
-
-## Output expectations
-When changing logic, keep these outputs coherent:
-- `output.debug.json`
-- `output.srt`
-- `output.ass`
+- never overwrite raw evidence
+- unknown is better than false identity/correction
+- provider imports stay lazy when heavy
+- every behavior change gets tests
+- visible SDH remains concise
+- no performance/compliance claim without evidence
+- semantic edits and safe mechanical fixes are different stages
 
 ## Validation
-Use:
 ```bash
-pip install -e .[dev]
+pip install -e '.[dev]'
+ruff check .
 pytest -q
 ```
 
-## Smoke test
-```bash
-subtitle-fusion run \
-  --video /tmp/fake-video.mkv \
-  --title "Example Show" \
-  --season 1 \
-  --episode 3 \
-  --imdb-title-id tt1234567 \
-  --output-dir /tmp/subtitle-fusion-out
-```
-
-## What good changes look like
-- add one small capability
-- update docs/config if behavior changes
-- keep the repo navigable for the next agent
+## Definition of done
+- tests/lint pass
+- configs/docs agree with behavior
+- evidence stays inspectable in debug output
+- heavy runtime remains optional
+- performance-sensitive changes are benchmarkable
