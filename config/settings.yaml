@@ -2,15 +2,32 @@ pipeline:
   enable_ocr: true
   enable_imdb: true
   enable_vision: false
-  enable_sdh: false
+  enable_sdh: true
   write_debug_json: true
 
 providers:
-  asr: stub
-  diarization: stub
+  asr: whisperx
+  diarization: whisperx_pyannote
   ocr: tesseract
   imdb: local_tsv
   vision: stub
+
+whisperx:
+  model: large-v3-turbo
+  device: auto
+  compute_type: float16
+  batch_size: 16
+  language: null
+  vad_method: pyannote
+  align: true
+  diarize: true
+  diarization_model: pyannote/speaker-diarization-community-1
+  hf_token_env: HF_TOKEN
+  min_speakers: null
+  max_speakers: null
+  return_embeddings: true
+  cache_dir: null
+  fill_nearest_speaker: false
 
 paths:
   imdb_dir: data/imdb
