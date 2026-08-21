@@ -7,6 +7,7 @@ It combines:
 - pyannote `speaker-diarization-community-1`
 - per-series speaker embeddings / voiceprints
 - PANNs AudioSet sound-event classification
+- sparse video text detection + OCR evidence
 - IMDb context and conservative text correction
 - SDH rendering to SRT and ASS
 
@@ -22,11 +23,14 @@ video
   -> speaker assignment
   -> voiceprint identity
   -> PANNs audio events/music
+  -> sparse OpenVINO text detection -> OCR only on useful crops
   -> IMDb/text fusion
   -> SDH SRT + ASS + debug JSON
 ```
 
-See `docs/PIPELINE_RUNTIME.md` for the detailed runtime and Codex/Pi handoff.
+See:
+- `docs/PIPELINE_RUNTIME.md` for the detailed runtime and Codex/Pi handoff
+- `docs/PERFORMANCE_REFERENCES.md` for benchmark sources, YouTube demos, and the fast-path design
 
 ## Install
 
@@ -117,11 +121,26 @@ Music is treated separately:
 
 The pipeline intentionally does not label every visible line with a character name. Debug metadata can be rich; the subtitle should stay readable.
 
+## Fast video text strategy
+
+Full OCR on every frame is explicitly rejected.
+
+Preferred gate:
+- Intel/OpenVINO `horizontal-text-detection-0001`
+- real-time demo: https://docs.openvino.ai/2024/openvino-workflow/model-server/ovms_demo_horizontal_text_detection.html
+
+The detector only decides **where text exists**. Recognition then runs on new or changed text crops only. Stable crops are tracked and cached across frames.
+
+For rotated or difficult text, a heavier detector is only used as a fallback on selected frames/crops.
+
+See `docs/PERFORMANCE_REFERENCES.md` for the benchmark numbers and links.
+
 ## Agent-friendly repository
 
 - `AGENTS.md` contains stable coding rules.
 - `skills/repo-navigation/SKILL.md` routes Codex/Pi by task.
 - `docs/PIPELINE_RUNTIME.md` describes provider boundaries and handoff.
+- `docs/PERFORMANCE_REFERENCES.md` documents performance evidence and optimization choices.
 - heavy ML imports are lazy.
 - pure orchestration helpers have unit tests.
 
@@ -132,7 +151,10 @@ The pipeline intentionally does not label every visible line with a character na
 - character identity and visual visibility are separate evidence
 - character names must be story-safe
 - only plot-relevant sound events should reach visible subtitles
+- expensive video/audio models should be gated by cheap detectors whenever possible
 
-## Next extension
+## Next extensions
 
-The next major provider is active-speaker detection (TalkNet or equivalent), which should set `Segment.speaker_visible` without changing voice identity.
+1. OpenVINO sparse text detector + text-track cache + recognizer adapter
+2. Active-speaker detection, benchmarking LR-ASD before TalkNet
+3. Tiny sound-event scout before heavier PANNs verification
