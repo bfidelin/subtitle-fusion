@@ -30,7 +30,8 @@ video
 
 See:
 - `docs/PIPELINE_RUNTIME.md` for runtime and Codex/Pi handoff
-- `docs/PERFORMANCE_REFERENCES.md` for the consolidated benchmark matrix, source URLs and YouTube demos
+- `docs/PERFORMANCE_TARGETS.md` for current production choices, the 45-minute budget and benchmark-harness contract
+- `docs/PERFORMANCE_REFERENCES.md` for the full benchmark evidence, source URLs, papers and YouTube demos
 
 ## Install
 
@@ -131,14 +132,24 @@ Current scout candidates, in benchmark order to test locally:
 
 Start with scene cuts + about **0.5 fps** periodic detection, track boxes, hash crops, and OCR only new/changed text. For a 45-minute episode that periodic baseline is only 1,350 frames instead of 67,500 frames at 25 fps.
 
-See `docs/PERFORMANCE_REFERENCES.md` for exact hardware, caveats and derived 45-minute estimates.
+At the published PP-OCRv5 mobile T4 detector rate, those 1,350 baseline frames correspond to only about **9 seconds of detector inference**. The expensive part is recognition, which is why crop tracking/cache is mandatory.
+
+The warm production target is approximately:
+
+- **1.5-3 minutes** for fast enriched mode
+- **2-4 minutes** for rich mode with sparse visual analysis
+
+These are engineering targets; local `benchmark.json` measurements are authoritative.
+
+See `docs/PERFORMANCE_TARGETS.md` for the full budget and `docs/PERFORMANCE_REFERENCES.md` for exact hardware/caveats.
 
 ## Agent-friendly repository
 
-- `AGENTS.md` contains stable coding rules.
+- `AGENTS.md` contains stable coding and performance rules.
 - `skills/repo-navigation/SKILL.md` routes Codex/Pi by task.
 - `docs/PIPELINE_RUNTIME.md` describes provider boundaries and handoff.
-- `docs/PERFORMANCE_REFERENCES.md` documents performance evidence and optimization choices.
+- `docs/PERFORMANCE_TARGETS.md` records current tool choices, sparse scheduling and benchmark requirements.
+- `docs/PERFORMANCE_REFERENCES.md` documents external performance evidence and links.
 - heavy ML imports are lazy.
 - pure orchestration helpers have unit tests.
 
@@ -155,6 +166,7 @@ See `docs/PERFORMANCE_REFERENCES.md` for exact hardware, caveats and derived 45-
 ## Next extensions
 
 1. Paddle mobile/tiny text scout + text-track cache + recognizer adapter
-2. Local benchmark harness for all providers
+2. Local benchmark harness and `benchmark.json`
 3. Active-speaker detection, benchmarking LR-ASD before TalkNet
 4. Tiny sound-event scout before heavier PANNs verification
+5. Selective Demucs/lyrics path
