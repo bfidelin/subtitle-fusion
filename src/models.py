@@ -11,6 +11,7 @@ class Word:
     end: float
     confidence: float | None = None
     flags: list[str] = field(default_factory=list)
+    speaker_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -33,12 +34,16 @@ class Candidate:
 class Event:
     label: str
     score: float
+    start: float | None = None
+    end: float | None = None
+    source: str | None = None
 
 
 @dataclass(slots=True)
 class MusicInfo:
     present: bool = False
     track: str | None = None
+    mood: str | None = None
     lyrics_detected: bool = False
 
 
@@ -60,6 +65,8 @@ class Segment:
     text_raw: str
     words: list[Word] = field(default_factory=list)
     speaker_name_candidate: str | None = None
+    speaker_name_confidence: float | None = None
+    speaker_visible: bool | None = None
     character_candidate: str | None = None
     actor_candidate: str | None = None
     text_corrected: str | None = None
@@ -69,6 +76,7 @@ class Segment:
     events: list[Event] = field(default_factory=list)
     music: MusicInfo = field(default_factory=MusicInfo)
     decision: Decision | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def final_text(self) -> str:
         return self.text_corrected or self.text_raw
@@ -87,6 +95,7 @@ class MediaContext:
 class PipelineResult:
     media: MediaContext
     segments: list[Segment]
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
