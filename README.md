@@ -88,6 +88,8 @@ Read these first:
 - [`docs/PERFORMANCE_TARGETS.md`](docs/PERFORMANCE_TARGETS.md) — 45-minute wall-clock targets and provider decisions
 - [`docs/PERFORMANCE_REFERENCES.md`](docs/PERFORMANCE_REFERENCES.md) — benchmark sources and useful videos
 - [`docs/FAST_SCOUT_PIPELINE.md`](docs/FAST_SCOUT_PIPELINE.md) — confidence-routing architecture
+- [`docs/AUDIO_EVENTS_AND_MUSIC.md`](docs/AUDIO_EVENTS_AND_MUSIC.md) — audio events, music, singing and selective source separation
+- [`docs/SONG_IDENTIFICATION.md`](docs/SONG_IDENTIFICATION.md) — identify songs from sung-word fragments + fingerprint evidence
 - [`docs/WHISPERX_PYANNOTE_RUNTIME.md`](docs/WHISPERX_PYANNOTE_RUNTIME.md) — current heavy runtime
 - [`docs/NETFLIX_FR_STYLE.md`](docs/NETFLIX_FR_STYLE.md) and [`docs/SDH_STYLE_GUIDE.md`](docs/SDH_STYLE_GUIDE.md)
 
@@ -182,11 +184,18 @@ cheap YAMNet/AudioSet-class scout
   -> candidate windows only
   -> PANNs verifier
   -> music/vocal analysis
-  -> track recognition if enabled
-  -> Demucs only on selected vocal-music windows
+  -> selected vocal window
+       +-> vocal ASR -> distinctive lyric fragments -> web candidate search
+       +-> Chromaprint/AcoustID when useful
+       +-> fuse candidates -> MusicBrainz metadata confirmation
+  -> Demucs/HTDemucs only where vocal isolation can improve the result
 ```
 
+Lyrics search is an **identification/context tool**, not a license to download or replace subtitles with full web lyrics. Keep only short query fragments, candidate metadata and confidence evidence. A network lookup failure must not block normal subtitle generation.
+
 Never run Demucs over a complete episode by default.
+
+See [`docs/AUDIO_EVENTS_AND_MUSIC.md`](docs/AUDIO_EVENTS_AND_MUSIC.md) and [`docs/SONG_IDENTIFICATION.md`](docs/SONG_IDENTIFICATION.md).
 
 ## Performance objective
 
@@ -265,7 +274,8 @@ No IMSC/TTML file is generated.
 7. connect voiceprints to character identity enrollment/matching
 8. connect YAMNet-class scout -> PANNs verifier
 9. add sparse LR-ASD active-speaker provider
-10. add benchmark harness and warm season worker/model residency
+10. add lyric-fragment song identification + optional AcoustID/MusicBrainz confirmation
+11. add benchmark harness and warm season worker/model residency
 
 IMSC is intentionally **not** in the active roadmap.
 
