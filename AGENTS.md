@@ -61,6 +61,8 @@ PGS/image subtitle streams should be processed at subtitle-event/bitmap level be
 - Model/provider changes require fake/small-data tests.
 - Local measured performance overrides external projections.
 - Keep ASR, source-track quality, sync, OCR, identity, translation and linguistic-QA confidence independently inspectable.
+- **SRT is the primary playback output.**
+- **IMSC/TTML is inactive. Do not add an exporter, dependency, config path or roadmap item unless the user explicitly re-enables it.**
 
 ## Translation / proofreading policy
 Follow `docs/TRANSLATOR_QC_CHECKLIST.md`.
@@ -84,6 +86,27 @@ Follow `docs/STANDARDS_AND_PRACTICES.md` and the active output profile. For Netf
 - CPS and WPM QC
 
 Never shorten meaning automatically merely to satisfy a reading-speed metric.
+
+### SRT placement
+Dynamic placement should stay in the SRT path rather than requiring a second master format.
+
+Target behavior:
+```text
+bottom-center by default
+ -> plot-relevant lower-screen OCR collision
+ -> top-center on supported Jellyfin profile (`{\an8}`)
+ -> keep placement stable through the shot/sequence
+```
+
+Rules:
+- reuse OCR boxes and shot-map evidence
+- do not run a separate detector only for layout
+- placement tags are compatibility extensions, not universal SRT standard features
+- retain placement reason/confidence/avoid boxes in debug data
+- a player ignoring placement tags must still receive valid readable dialogue text
+- avoid top/bottom ping-pong between consecutive cues
+
+This placement engine is planned, not implemented yet.
 
 ## Optimization policy
 Preferred order:
@@ -116,6 +139,7 @@ A single cached shot map should serve:
 - OCR sampling
 - face/ASD track refresh
 - structural discontinuity/recap detection
+- subtitle placement stability/reset
 
 A shared audio/VAD derivative should serve synchronization and routing where compatible. Cache keys must include media fingerprint and relevant model/config versions.
 
@@ -134,8 +158,10 @@ For season/library processing:
 - do not reload WhisperX/pyannote/OCR/audio models for every episode
 - prefetch/decode the next episode only when it does not slow the bottleneck stage
 
-## Output/master policy
-Current compatibility outputs are SRT/ASS/debug JSON. The future standards-rich master is W3C **IMSC Text Profile 1.3 / TTML2**. Do not claim IMSC compliance until exporter + profile/schema validation + fixtures exist.
+## Output policy
+Current outputs are SRT, optional ASS, debug JSON and the Netflix compliance report when enabled.
+
+SRT is the primary playback target. IMSC/TTML is deliberately inactive and should remain reference-only documentation unless explicitly re-enabled.
 
 ## Validation
 ```bash
@@ -161,6 +187,8 @@ pip install -e '.[audio]'
 - no eager heavy-model import
 - raw/debug evidence preserved
 - source/reference selection and semantic edits are traceable
+- SRT remains a valid primary output
+- no inactive IMSC/TTML runtime path is introduced
 - no uncited performance claim
 - performance-sensitive work records local benchmark data when runtime hardware is available
 - standard/profile claims distinguish implemented checks from planned/unsupported compliance
