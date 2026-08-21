@@ -12,11 +12,13 @@ Build a fast enriched-subtitle pipeline combining WhisperX/pyannote, reuse of ex
 4. `docs/PERFORMANCE_TARGETS.md`
 5. `docs/OPTIMIZATION_PLAYBOOK.md`
 6. `docs/FAST_SCOUT_PIPELINE.md`
-7. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
-8. `docs/NETFLIX_FR_STYLE.md`
-9. `docs/SDH_STYLE_GUIDE.md`
-10. `docs/PERFORMANCE_REFERENCES.md` when making performance/model claims
-11. relevant code/config/tests
+7. `docs/AUDIO_EVENTS_AND_MUSIC.md`
+8. `docs/SONG_IDENTIFICATION.md` when changing music/lyrics/track recognition
+9. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
+10. `docs/NETFLIX_FR_STYLE.md`
+11. `docs/SDH_STYLE_GUIDE.md`
+12. `docs/PERFORMANCE_REFERENCES.md` when making performance/model claims
+13. relevant code/config/tests
 
 ## Runtime baseline
 `WhisperXProvider` supplies whole-episode Faster-Whisper ASR, forced word alignment and pyannote Community-1 diarization/embeddings/overlap evidence.
@@ -63,6 +65,8 @@ PGS/image subtitle streams should be processed at subtitle-event/bitmap level be
 - Keep ASR, source-track quality, sync, OCR, identity, translation and linguistic-QA confidence independently inspectable.
 - **SRT is the primary playback output.**
 - **IMSC/TTML is inactive. Do not add an exporter, dependency, config path or roadmap item unless the user explicitly re-enables it.**
+- **Do not scrape/store complete copyrighted lyrics as a project dataset.** Lyric web search is for song identification/context using short ASR fragments and candidate metadata.
+- External track/lyrics results are evidence, not automatic truth; conflicting providers must remain inspectable.
 
 ## Translation / proofreading policy
 Follow `docs/TRANSLATOR_QC_CHECKLIST.md`.
@@ -129,7 +133,14 @@ scene cuts + ~0.5 fps
 
 Active speaker: speech windows only, reuse face tracks, benchmark LR-ASD before TalkNet.
 
-Audio: cheap AudioSet/YAMNet-class scout -> PANNs verifier -> Demucs only on selected vocal-music windows.
+Audio: cheap AudioSet/YAMNet-class scout -> PANNs verifier -> selected singing windows only. For song identification, follow `docs/SONG_IDENTIFICATION.md`: vocal ASR -> distinctive lyric fragments -> web candidate search, with optional Chromaprint/AcoustID in parallel -> candidate fusion -> MusicBrainz metadata confirmation. Demucs/HTDemucs runs only where vocal isolation is expected to improve the result.
+
+Network lookups must:
+- be limited to candidate music windows
+- have bounded retries/timeouts and caching
+- respect provider rate limits
+- degrade gracefully when offline
+- use fake provider responses in core tests rather than live internet
 
 ## Shared evidence rule
 Compute expensive media-derived structure once and reuse it.
@@ -189,6 +200,8 @@ pip install -e '.[audio]'
 - source/reference selection and semantic edits are traceable
 - SRT remains a valid primary output
 - no inactive IMSC/TTML runtime path is introduced
+- lyric/track-identification code does not persist full web lyrics and has offline/fake-provider tests
+- external-provider rate limits/cache/failure behavior are explicit
 - no uncited performance claim
 - performance-sensitive work records local benchmark data when runtime hardware is available
 - standard/profile claims distinguish implemented checks from planned/unsupported compliance
