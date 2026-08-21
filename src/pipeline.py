@@ -7,9 +7,10 @@ import yaml
 from src.exporters import export_ass, export_compliance_report, export_json, export_srt
 from src.fusion import resolve_segment
 from src.imdb_index import IMDbIndex
-from src.models import MediaContext, PipelineResult, Segment, Word
+from src.models import MediaContext, PipelineResult, Segment, SpeakerTurn, Word
 from src.netflix_style import NetflixStyle, apply_netflix_style, validate_result
 from src.scoring import load_scoring_config, segment_needs_review
+from src.whisperx_provider import WhisperXConfig, WhisperXProvider
 
 
 def load_settings(path: Path) -> dict:
@@ -35,6 +36,31 @@ def build_stub_segments() -> list[Segment]:
     ]
 
 
+def ingest_transcript(
+    video_path: Path,
+    settings: dict,
+) -> tuple[list[Segment], list[SpeakerTurn], dict[str, list[float]], str | None]:
+    provider = settings.get("providers", {}).get("asr", "stub")
+    if provider == "stub":
+        return build_stub_segments(), [], {}, None
+    if provider != "whisperx":
+        raise ValueError(f"Unsupported ASR provider: {provider!r}")
+
+    whisperx_cfg = WhisperXConfig.from_mapping(settings.get("whisperx"))
+    diarization_provider = settings.get("providers", {}).get(
+        "diarization", "whisperx_pyannote"
+    )
+    if diarization_provider in {"none", "disabled", None}:
+        whisperx_cfg = WhisperXConfig.from_mapping(
+            {**settings.get("whisperx", {}), "diarize": False}
+        )
+    elif diarization_provider != "whisperx_pyannote":
+        raise ValueError(f"Unsupported diarization provider: {diarization_provider!r}")
+
+    run = WhisperXProvider(whisperx_cfg).transcribe(video_path)
+    return run.segments, run.speaker_turns, run.speaker_embeddings, run.language
+
+
 def run_pipeline(
     video_path: Path,
     media: MediaContext,
@@ -44,7 +70,6 @@ def run_pipeline(
     audio_analysis_path: Path = Path("config/audio_analysis.yaml"),
     style_rules_path: Path = Path("config/style_rules.yaml"),
 ) -> PipelineResult:
-    _ = video_path
     settings = load_settings(settings_path)
     scoring_cfg = load_scoring_config(scoring_path)
     audio_cfg = load_settings(audio_analysis_path)
@@ -52,22 +77,24 @@ def run_pipeline(
     imdb_dir = Path(settings.get("paths", {}).get("imdb_dir", "data/imdb"))
     imdb = IMDbIndex.from_dir(imdb_dir)
 
-    # TODO: pass 1 should extract audio and candidate windows from the input video.
-    # TODO: add audio-event detection hook based on audio_cfg["audio_events"].
-    # TODO: add music detection hook based on audio_cfg["music_detection"].
-    # TODO: when music is present, optionally call a track-recognition provider
-    #       in the configured provider order (e.g. shazamkit, audd, acrcloud).
-    # TODO: when vocal music is detected, optionally run source separation before
-    #       lyric transcription, then keep lyrics only when confidence is high.
+    # Whole-episode ASR + first-class diarization. WhisperX currently supplies
+    # Faster-Whisper ASR, word alignment and pyannote Community-1 diarization.
+    segments, speaker_turns, speaker_embeddings, language = ingest_transcript(
+        video_path,
+        settings,
+    )
 
-    segments = build_stub_segments()
     if media.imdb_title_id:
-        title_candidates = imdb.get_characters_for_title(media.imdb_title_id) + imdb.get_people_for_title(media.imdb_title_id)
+        title_candidates = (
+            imdb.get_characters_for_title(media.imdb_title_id)
+            + imdb.get_people_for_title(media.imdb_title_id)
+        )
         for seg in segments:
             seg.imdb_candidates = title_candidates
 
-    # TODO: attach detected sound events and music metadata to segments.
-    # Suggested metadata shape is documented in docs/AUDIO_EVENTS_AND_MUSIC.md.
+    # TODO: attach fast OCR, shot boundaries, scout-ASR disagreement and audio
+    # event/music evidence to the same timestamped evidence timeline.
+    # TODO: route only uncertain windows to stronger local re-ASR/review.
     _ = audio_cfg
 
     for seg in segments:
@@ -84,7 +111,13 @@ def run_pipeline(
         apply_netflix_style(segments, netflix_style)
         netflix_issues = validate_result(segments, netflix_style)
 
-    result = PipelineResult(media=media, segments=segments)
+    result = PipelineResult(
+        media=media,
+        segments=segments,
+        speaker_turns=speaker_turns,
+        speaker_embeddings=speaker_embeddings,
+        language=language,
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     export_json(result, output_dir / "output.debug.json")
     export_srt(result, output_dir / "output.srt")
