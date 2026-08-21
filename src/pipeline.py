@@ -4,10 +4,11 @@ from pathlib import Path
 
 import yaml
 
-from src.exporters import export_ass, export_json, export_srt
+from src.exporters import export_ass, export_compliance_report, export_json, export_srt
 from src.fusion import resolve_segment
 from src.imdb_index import IMDbIndex
 from src.models import MediaContext, PipelineResult, Segment, Word
+from src.netflix_style import NetflixStyle, apply_netflix_style, validate_result
 from src.scoring import load_scoring_config, segment_needs_review
 
 
@@ -41,11 +42,13 @@ def run_pipeline(
     settings_path: Path = Path("config/settings.yaml"),
     scoring_path: Path = Path("config/scoring.yaml"),
     audio_analysis_path: Path = Path("config/audio_analysis.yaml"),
+    style_rules_path: Path = Path("config/style_rules.yaml"),
 ) -> PipelineResult:
     _ = video_path
     settings = load_settings(settings_path)
     scoring_cfg = load_scoring_config(scoring_path)
     audio_cfg = load_settings(audio_analysis_path)
+    style_cfg = load_settings(style_rules_path)
     imdb_dir = Path(settings.get("paths", {}).get("imdb_dir", "data/imdb"))
     imdb = IMDbIndex.from_dir(imdb_dir)
 
@@ -74,9 +77,18 @@ def run_pipeline(
         else:
             seg.text_corrected = seg.text_raw
 
+    netflix_issues = []
+    netflix_cfg = style_cfg.get("netflix", {})
+    if netflix_cfg.get("enabled", False):
+        netflix_style = NetflixStyle.from_mapping(netflix_cfg)
+        apply_netflix_style(segments, netflix_style)
+        netflix_issues = validate_result(segments, netflix_style)
+
     result = PipelineResult(media=media, segments=segments)
     output_dir.mkdir(parents=True, exist_ok=True)
     export_json(result, output_dir / "output.debug.json")
     export_srt(result, output_dir / "output.srt")
     export_ass(result, output_dir / "output.ass")
+    if netflix_cfg.get("enabled", False):
+        export_compliance_report(netflix_issues, output_dir / "output.netflix-report.json")
     return result

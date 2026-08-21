@@ -1,15 +1,32 @@
 mode: sdh
+
+netflix:
+  enabled: true
+  locale: fr-FR
+  profile: sdh
+  max_chars_per_line: 42
+  max_lines: 2
+  min_duration_sec: 0.8333333333
+  max_duration_sec: 7.0
+  target_cps: 17.0
+  max_cps: 20.0
+  fps: 24.0
+  min_gap_frames: 2
+  close_short_gaps_under_sec: 0.5
+
 speaker_labels:
   enabled: true
   show_only_when_needed: true
   use_character_name_over_actor: true
   fallback_labels:
-    unknown_male: "[male voice]"
-    unknown_female: "[female voice]"
-    unknown_person: "[speaker]"
+    unknown_male: "[voix masculine]"
+    unknown_female: "[voix féminine]"
+    unknown_person: "[voix]"
   reveal_name_only_if_known_in_story: true
+  brackets: true
+  lowercase_generic_labels: true
   output_style:
-    srt: "colon"
+    srt: "bracket"
     ass: "bracket"
 
 sounds:
@@ -17,10 +34,13 @@ sounds:
   include_music_mood: true
   include_obvious_visible_actions: false
   include_silence_when_plot_pertinent: true
+  brackets: true
+  lowercase_generic_labels: true
 
 music:
   subtitle_lyrics_when_intelligible_and_relevant: true
   prefer_short_music_labels_when_lyrics_not_needed: true
+  describe_genre_and_mood_when_track_is_uncertain: true
 
 correction:
   preserve_raw_text: true
