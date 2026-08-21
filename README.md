@@ -4,7 +4,8 @@ Production-oriented Python project to generate enriched subtitles from video by 
 
 - ASR with word timestamps and confidence
 - a very-fast scout layer to locate difficult regions before expensive processing
-- speaker diarization
+- first-class speaker diarization with stable episode-local speaker IDs and overlap detection
+- speaker-to-character identity resolution kept separate from diarization
 - OCR from video frames
 - IMDb context for title, cast, and character names
 - optional actor/face hints
@@ -25,7 +26,7 @@ The main performance rule is:
 
 > Run cheap scouts on the whole episode, then spend compute only on uncertain or interesting windows.
 
-The fast path should handle most of an episode with the existing fast Faster-Whisper workflow. A confidence router escalates only suspicious segments to local re-ASR, OCR, source separation or contextual review.
+The fast path should handle most of an episode with the existing fast Faster-Whisper workflow. A confidence router escalates only suspicious segments to local re-ASR, OCR, source separation, diarization refinement or contextual review.
 
 Detailed design: `docs/FAST_SCOUT_PIPELINE.md`.
 
@@ -35,8 +36,9 @@ Typical flow:
 video/audio
    |
    +-> tiny ASR scout --------+
-   +-> fast text detection ---+
-   +-> audio/music scout -----+-> evidence timeline
+   +-> diarization -----------+
+   +-> fast text detection ---+-> evidence timeline
+   +-> audio/music scout -----+
    +-> shot detection --------+
                                |
                                v
@@ -46,7 +48,7 @@ video/audio
                          /             \
                     accept          local review
                                       |
-                      re-ASR + OCR + names/context
+                 re-ASR + OCR + speaker + names/context
                                       |
                          linguistic/translation QA
                                       |
@@ -57,6 +59,7 @@ Potential provider families are intentionally adapters rather than hard dependen
 
 - scout ASR: Moonshine Tiny / Tiny Streaming; optional PocketSphinx legacy backend
 - primary ASR: Faster-Whisper, whisper.cpp/OpenVINO alternatives
+- diarization: interchangeable VAD / speaker embedding / clustering / overlap-refinement adapters
 - fast OCR: RapidOCR/ONNX Runtime, PP-OCR mobile, OpenVINO adapters
 - audio events/music/singing: YAMNet/AudioSet-like classifiers
 - source separation: Demucs CUDA or OpenVINO Demucs
@@ -106,12 +109,68 @@ The pipeline should only auto-correct uncertain segments, using evidence in this
 2. IMDb candidates restricted to the current title/episode
 3. names already validated in the show/episode glossary
 4. dialogue context
-5. actor/face hint
-6. phonetic similarity
+5. validated speaker-to-character continuity
+6. actor/face hint
+7. phonetic similarity
 
 Raw ASR text must always be preserved alongside corrected text.
 
 A second small ASR scout can provide an independent hypothesis. Disagreement between the scout and Faster-Whisper is itself a useful escalation signal, especially for proper names.
+
+## Diarization and speaker identity
+
+Diarization is a first-class branch of the pipeline, running alongside ASR/OCR/audio-event analysis and feeding the shared evidence timeline.
+
+It answers:
+
+> **Who spoke when?**
+
+It does **not** by itself answer:
+
+> **Which character is speaking?**
+
+Keep those values separate:
+
+```text
+speaker_id = SPEAKER_03
+speaker_identity_candidate = Muriel
+speaker_identity_confidence = 0.94
+```
+
+The diarization layer should provide, where available:
+
+- speaker-turn start/end timestamps
+- stable episode-local `SPEAKER_xx` IDs
+- speaker-change boundaries
+- overlap regions
+- diarization confidence/quality signals
+- optional speaker embeddings/reference IDs for clustering
+
+Character identity is then resolved from independent evidence such as OCR/name cards, visible context, IMDb/title candidates, dialogue context, previously validated speaker mappings and optional face hints.
+
+This separation is important: a confident voice cluster must not automatically become a confident character name.
+
+The same fast/slow policy applies to diarization:
+
+- whole-episode VAD/speaker changes/embeddings should stay cheap
+- clean single-speaker regions should be accepted directly
+- only ambiguous boundaries, overlaps or identity conflicts should receive expensive refinement
+
+Diarization also drives SDH speaker rendering. Examples:
+
+```text
+speaker visible and obvious
+-> no speaker label
+
+off-screen speaker, identity known and already revealed
+-> [Muriel] Attends-moi !
+
+off-screen speaker, identity not yet revealed
+-> [voix féminine] Attends-moi !
+
+overlapping speakers
+-> split/label/position according to SDH/output rules
+```
 
 ## Confidence-driven compute
 
@@ -133,6 +192,8 @@ Other signals can force review regardless of ASR confidence:
 - unknown/probable proper noun
 - grammar or spelling anomaly
 - overlapping speakers
+- low-confidence speaker boundary
+- inconsistent speaker identity
 - language switch
 - music/singing contamination
 - inconsistent spelling of a previously validated name
@@ -141,6 +202,8 @@ Do not collapse all evidence into one opaque score. Planned/debug confidence fie
 
 - `asr_confidence`
 - `scout_agreement`
+- `diarization_confidence`
+- `speaker_identity_confidence`
 - `ocr_confidence`
 - `proper_noun_confidence`
 - `context_confidence`
@@ -158,8 +221,11 @@ For a suspicious segment, crop only the local audio window, typically a few seco
 - a prompt/glossary of validated character and place names
 - nearby OCR
 - 2–3 previous and following subtitle events
-- speaker/diarization context
+- stable speaker ID / diarization confidence / overlap flags
+- previously validated speaker-to-character mappings
 - title/episode IMDb candidates
+
+For overlapping speech or uncertain speaker boundaries, the local review path may refine diarization or use diarization-aware crop/alignment rather than treating the region as a normal single-speaker segment.
 
 The reviewer may improve spelling, grammar, punctuation and translation, but must not change meaning without strong evidence. Raw ASR is never overwritten.
 
@@ -175,7 +241,7 @@ Preferred flow:
 4. recognize only new/changed regions
 5. escalate relevant/uncertain regions to a stronger OCR model
 
-High-value OCR includes names, location cards, messages, signs and plot-relevant documents. OCR evidence is especially valuable for correcting low-confidence proper names.
+High-value OCR includes names, location cards, messages, signs and plot-relevant documents. OCR evidence is especially valuable for correcting low-confidence proper names and for resolving a diarized speaker to a character when the scene provides explicit on-screen naming.
 
 ## Netflix-style French output
 
@@ -199,12 +265,14 @@ See `docs/NETFLIX_FR_STYLE.md` for the official Netflix references and the disti
 
 This project includes:
 
-- `docs/SDH_STYLE_GUIDE.md` for speaker IDs, sound effects, narration, and spoiler-safe naming
+- `docs/SDH_STYLE_GUIDE.md` for speaker IDs, diarization-aware rendering, sound effects, narration, and spoiler-safe naming
 - `config/style_rules.yaml` for project-level SDH behavior
 
 Highlights:
 
+- use diarization to know when speakers change or overlap
 - show speaker labels only when needed for clarity
+- keep diarized speaker IDs separate from character identity
 - prefer character names over actor names in visible subtitles
 - do not reveal unrevealed names too early
 - include only plot-pertinent or tonally relevant sound labels
@@ -250,15 +318,19 @@ Already represented in the current code:
 - proper-noun candidate flags
 - title-scoped IMDb character/actor candidates
 - OCR hit data model and OCR-aware fusion scoring
+- a `speaker_id` field at segment level
 
 Still to be wired end-to-end:
 
 - real Faster-Whisper ingestion instead of stub segments
+- real diarization provider producing stable turns/overlaps/confidence
+- explicit speaker-identity resolution separate from diarization
 - real OCR frame extraction/detection
 - scout ASR adapter
 - evidence timeline + confidence router
 - local audio crop + selective re-ASR
 - persistent show/episode proper-name glossary
+- persistent/validated speaker-to-character mappings
 - translation confidence distinct from ASR confidence
 - grammar, spelling and punctuation proofreading
 - context-aware linguistic rewriting without semantic drift
@@ -292,6 +364,10 @@ Profile at least:
 - real-time factor per stage
 - percentage of segments escalated
 - seconds of audio reprocessed
+- diarization runtime
+- number of speaker turns and overlaps
+- low-confidence speaker boundaries
+- speaker identity resolution/change count
 - OCR frames and regions processed
 - seconds sent to Demucs/source separation
 - CPU/GPU time per provider
@@ -313,12 +389,14 @@ subtitle-fusion run \
 
 1. replace stub segments with real Faster-Whisper word/timestamp/confidence ingestion
 2. add an evidence timeline and confidence router
-3. implement local audio crop + selective re-ASR
-4. wire fast OCR detection and region-based recognition
-5. add show/episode proper-name glossary persistence
-6. add Moonshine scout ASR adapter
-7. add audio-event/music/singing routing
-8. add selective Demucs + vocal ASR
-9. add translation + grammar/spelling/context QA reviewer
-10. add shot-change-aware Netflix timing
-11. profile and calibrate thresholds on real episodes
+3. wire first-class diarization turns, overlaps and stable speaker IDs
+4. implement local audio crop + selective re-ASR
+5. wire fast OCR detection and region-based recognition
+6. add show/episode proper-name glossary persistence
+7. add speaker-identity resolution separate from diarization
+8. add Moonshine scout ASR adapter
+9. add audio-event/music/singing routing
+10. add selective Demucs + vocal ASR
+11. add translation + grammar/spelling/context QA reviewer
+12. add shot-change-aware Netflix timing
+13. profile and calibrate thresholds on real episodes
