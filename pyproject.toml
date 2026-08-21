@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subtitle-fusion"
-version = "0.1.0"
-description = "Enriched subtitle generation with ASR, OCR, diarization, and IMDb context"
+version = "0.2.0"
+description = "Enriched SDH subtitle generation with WhisperX, pyannote, voiceprints and audio events"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Bruno Fidelin" }]
@@ -14,9 +14,26 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+asr = [
+  "whisperx>=3.7",
+]
+diarization = [
+  "pyannote.audio>=4.0",
+]
+audio = [
+  "panns-inference>=0.1.1",
+  "librosa>=0.11",
+  "numpy>=2.0",
+]
+runtime = [
+  "subtitle-fusion[asr,diarization,audio]",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.5.0",
+]
+all = [
+  "subtitle-fusion[runtime,dev]",
 ]
 
 [project.scripts]
