@@ -103,6 +103,7 @@ class PipelineResult:
     speaker_turns: list[SpeakerTurn] = field(default_factory=list)
     speaker_embeddings: dict[str, list[float]] = field(default_factory=dict)
     language: str | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

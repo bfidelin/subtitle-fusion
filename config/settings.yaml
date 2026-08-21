@@ -1,4 +1,8 @@
 pipeline:
+  enable_media_preflight: true
+  reuse_embedded_subtitles: true
+  prefer_text_subtitle_track: true
+  prefer_pgs_event_ocr_before_video_ocr: true
   enable_ocr: true
   enable_imdb: true
   enable_vision: false
@@ -8,7 +12,7 @@ pipeline:
 providers:
   asr: whisperx
   diarization: whisperx_pyannote
-  ocr: tesseract
+  ocr: sparse
   imdb: local_tsv
   vision: stub
 
@@ -28,6 +32,32 @@ whisperx:
   return_embeddings: true
   cache_dir: null
   fill_nearest_speaker: false
+
+ocr:
+  detector_candidates:
+    - pp-ocrv5-mobile-det
+    - pp-ocrv6-tiny-det
+    - openvino-horizontal-text-detection-0001
+  periodic_fps: 0.5
+  active_text_fps_min: 2.0
+  active_text_fps_max: 5.0
+  use_shot_boundaries: true
+  track_boxes: true
+  perceptual_hash_cache: true
+  recognize_only_changed_crops: true
+
+voiceprints:
+  enabled: true
+  min_score: 0.78
+  min_margin: 0.04
+  max_samples_per_character: 12
+  store_dir: data/voiceprints
+
+performance:
+  write_benchmark_json: true
+  benchmark_path_name: output.benchmark.json
+  cache_media_evidence: true
+  cache_by_media_and_config_hash: true
 
 paths:
   imdb_dir: data/imdb

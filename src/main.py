@@ -17,6 +17,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--season", type=int, default=None)
     run_parser.add_argument("--episode", type=int, default=None)
     run_parser.add_argument("--imdb-title-id", type=str, default=None)
+    run_parser.add_argument(
+        "--speaker-map",
+        type=Path,
+        default=None,
+        help="Optional YAML mapping of episode SPEAKER_xx IDs to established character names",
+    )
     run_parser.add_argument("--output-dir", type=Path, required=True)
     return parser
 
@@ -36,6 +42,7 @@ def main() -> int:
             video_path=args.video,
             media=media,
             output_dir=args.output_dir,
+            speaker_map_path=args.speaker_map,
         )
         return 0
 

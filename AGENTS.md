@@ -1,120 +1,108 @@
 # AGENTS.md
 
-This repository is configured to be easy for coding agents to navigate.
+This repository is configured for Codex, Pi and other coding agents.
 
 ## Goal
-Build a fast enriched-subtitle pipeline combining:
-- WhisperX/Faster-Whisper ASR with word alignment/confidence
-- pyannote speaker diarization
-- cheap scout ASR/OCR/audio analysis
-- selective local re-ASR/review
-- OCR + IMDb/show context for proper names
-- speaker-to-character identity resolution
-- SDH audio/music/lyrics enrichment
-- Netflix-style French timed-text validation
+Build a fast enriched-subtitle pipeline combining WhisperX/pyannote, reuse of existing subtitle evidence, sparse OCR/audio/vision analysis, conservative character identity, professional SDH formatting and reproducible QC.
 
-## First files to read
+## Read first
 1. `README.md`
-2. `docs/FAST_SCOUT_PIPELINE.md`
-3. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
-4. `docs/SDH_STYLE_GUIDE.md`
-5. `docs/NETFLIX_FR_STYLE.md`
-6. `docs/AUDIO_EVENTS_AND_MUSIC.md`
-7. `config/settings.yaml`
-8. `config/scoring.yaml`
-9. `src/models.py`
-10. `src/whisperx_provider.py`
-11. `src/pipeline.py`
-12. `src/fusion.py`
+2. `docs/STANDARDS_AND_PRACTICES.md`
+3. `docs/PERFORMANCE_TARGETS.md`
+4. `docs/OPTIMIZATION_PLAYBOOK.md`
+5. `docs/FAST_SCOUT_PIPELINE.md`
+6. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
+7. `docs/NETFLIX_FR_STYLE.md`
+8. `docs/SDH_STYLE_GUIDE.md`
+9. `docs/PERFORMANCE_REFERENCES.md` when making performance/model claims
+10. relevant code/config/tests
 
-## Current runtime baseline
-The real whole-episode baseline is now `WhisperXProvider`:
-- WhisperX batched Faster-Whisper ASR
-- forced word alignment
-- pyannote `speaker-diarization-community-1`
-- word/segment speaker IDs
-- speaker turns and embeddings
-- overlap evidence
+## Runtime baseline
+`WhisperXProvider` supplies whole-episode Faster-Whisper ASR, forced word alignment and pyannote Community-1 diarization/embeddings/overlap evidence.
 
-Do **not** add a second whole-episode Faster-Whisper pass before WhisperX. WhisperX already uses Faster-Whisper internally. Future extra ASR work must be selective/local unless benchmarking proves otherwise.
+Do **not** add a duplicate whole-episode Faster-Whisper pass. Extra ASR must be selective/local unless measured evidence proves otherwise.
 
-WhisperX is an optional heavy dependency. Core/unit tests must remain runnable without loading GPU models.
+Before expensive analysis, prefer media preflight and existing-track reuse. `src/media_preflight.py` inventories text/image subtitle tracks and audio streams using ffprobe.
 
-## Working rules
-- Preserve `text_raw`; never overwrite it.
-- Put corrections in `text_corrected` and `decision`.
-- Only auto-correct uncertain content when evidence is strong.
-- Confidence controls compute cost.
-- Keep `speaker_id` separate from character identity.
-- Preserve overlap information instead of flattening speakers.
-- Keep providers behind replaceable adapters.
-- Prefer character names over actor names in visible subtitles.
-- Never reveal names before the story reveals them.
-- Store rich evidence in debug JSON, not visible subtitles.
-- Netflix formatting may change safe layout/timing but must not invent/truncate/paraphrase dialogue silently.
+## Non-negotiable rules
+- Preserve `text_raw`; never overwrite raw evidence.
+- Semantic edits must be traceable; formatters may not invent or silently paraphrase dialogue.
+- Unknown speaker/character is better than a false identity.
+- `speaker_id`, character identity and visual visibility are separate evidence.
+- Failed face detection is not proof of off-screen speech.
+- Preserve overlapping-speaker evidence.
+- Do not reveal names before the story establishes them.
+- Visible SDH stays concise; rich evidence belongs in debug output.
+- Expensive models are gated by cheap scouts/quality checks.
+- Heavy ML imports stay lazy so core tests run without GPU packages.
+- Model/provider changes require fake/small-data tests.
+- Local measured performance overrides external projections.
 
-## Evidence priority for uncertain names/tokens
-1. explicit on-screen OCR
-2. title/episode-restricted character candidates
-3. names already validated in show/episode glossary
-4. dialogue context
-5. validated speaker-to-character continuity
-6. actor/face hint
-7. phonetic similarity
+## Professional timing/layout
+Follow `docs/STANDARDS_AND_PRACTICES.md` and the active output profile. For Netflix-style fr-FR in particular, preserve:
+- max 42 visible chars/line
+- max 2 lines
+- 20-frame minimum and 7 s maximum duration
+- 2-frame minimum gap
+- shot-aware timing, not audio-only timing
+- clause-aware/bottom-heavy line breaks
+- CPS and WPM QC
 
-Scout disagreement or high diarization confidence is evidence, not an automatic correction.
+Never shorten meaning automatically merely to satisfy a reading-speed metric.
 
-## Confidence dimensions
-Keep independent signals where practical:
-- ASR confidence
-- scout agreement
-- diarization confidence
-- speaker identity confidence
-- OCR confidence
-- proper-name confidence
-- context confidence
-- translation confidence
-- linguistic QA confidence
-- final routing/decision confidence
+## Optimization policy
+Preferred order:
+1. inspect/reuse embedded text subtitle tracks
+2. OCR PGS/image subtitle events before arbitrary full-frame OCR
+3. reuse shared audio/VAD/shot maps and caches
+4. cheap global sync/quality preflight
+5. cheap scouts
+6. batch/local verifiers only on candidates
+7. deterministic QC/rendering
 
-## Audio/music policy
-- Treat sound events, music, singing, track recognition, source separation and lyric transcription separately.
-- Run cheap scouts broadly.
-- Run Demucs/source separation only on selected windows.
-
-## Install / tests
-Core tests:
-```bash
-pip install -e ".[dev]"
-pytest -q
-ruff check .
+Video OCR default:
+```text
+scene cuts + ~0.5 fps
+ -> mobile/tiny text detector
+ -> track boxes + perceptual hash
+ -> OCR new/changed crops only
+ -> temporal voting
 ```
 
-WhisperX runtime:
+Active speaker: speech windows only, reuse face tracks, benchmark LR-ASD before TalkNet.
+
+Audio: cheap AudioSet/YAMNet-class scout -> PANNs verifier -> Demucs only on selected vocal-music windows.
+
+## Character voiceprints
+Use `src/voiceprints.py` with both:
+- minimum absolute similarity
+- minimum margin over the second-best identity
+
+Keep bounded enrollment history and leave weak matches unknown.
+
+## Validation
 ```bash
-pip install -e ".[whisperx,dev]"
+pip install -e '.[dev]'
+ruff check .
+pytest -q
+```
+
+WhisperX smoke runtime:
+```bash
+pip install -e '.[whisperx,dev]'
 export HF_TOKEN=hf_...
 ```
 
-The Hugging Face account must have accepted the `pyannote/speaker-diarization-community-1` model conditions.
+Audio verifier runtime:
+```bash
+pip install -e '.[audio]'
+```
 
-## Preferred implementation order
-WhisperX ingestion + first-class pyannote diarization are now baseline-complete. Next:
-1. timestamped evidence timeline + confidence router
-2. local audio crop + selective re-ASR
-3. fast OCR detection/region recognition
-4. persistent show/episode proper-name glossary
-5. speaker-to-character identity resolver
-6. Moonshine-style independent scout ASR
-7. audio-event/music/singing routing
-8. selective Demucs + vocal ASR
-9. translation + grammar/spelling/context reviewer
-10. shot-aware Netflix timing
-11. real-episode profiling and threshold calibration
-
-## Avoid
-- expensive duplicate whole-episode ASR passes
-- conflating diarization with character identity
-- discarding overlap evidence
-- coupling core semantics to one backend/hardware provider
-- changing output semantics without docs/tests
+## Definition of done
+- tests/lint pass
+- docs/config semantics updated
+- no eager heavy-model import
+- raw/debug evidence preserved
+- no uncited performance claim
+- performance-sensitive work records local benchmark data when runtime hardware is available
+- standard/profile claims distinguish implemented checks from planned/unsupported compliance
