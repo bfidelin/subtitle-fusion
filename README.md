@@ -3,34 +3,34 @@
 Production-oriented Python pipeline for **enriched SDH subtitles**.
 
 It combines:
-- WhisperX ASR with word timestamps
+- fast ASR / WhisperX alignment
 - pyannote `speaker-diarization-community-1`
 - per-series speaker embeddings / voiceprints
-- PANNs AudioSet sound-event classification
+- sound-event scout + PANNs verification
 - sparse video text detection + OCR evidence
 - IMDb context and conservative text correction
 - SDH rendering to SRT and ASS
 
 ## Status
 
-The repository now has a real runtime path. Heavy ML dependencies are optional extras and loaded lazily, so agents and CI can work on the core without a GPU.
+The repository has a real runtime path. Heavy ML dependencies are optional extras and loaded lazily, so agents and CI can work on the core without a GPU.
 
 ```text
 video
   -> ffmpeg
-  -> WhisperX
+  -> ASR / WhisperX alignment
   -> pyannote Community-1
   -> speaker assignment
   -> voiceprint identity
-  -> PANNs audio events/music
-  -> sparse OpenVINO text detection -> OCR only on useful crops
+  -> sound scout -> PANNs audio events/music
+  -> sparse text scout -> OCR only on useful crops
   -> IMDb/text fusion
   -> SDH SRT + ASS + debug JSON
 ```
 
 See:
-- `docs/PIPELINE_RUNTIME.md` for the detailed runtime and Codex/Pi handoff
-- `docs/PERFORMANCE_REFERENCES.md` for benchmark sources, YouTube demos, and the fast-path design
+- `docs/PIPELINE_RUNTIME.md` for runtime and Codex/Pi handoff
+- `docs/PERFORMANCE_REFERENCES.md` for the consolidated benchmark matrix, source URLs and YouTube demos
 
 ## Install
 
@@ -76,7 +76,7 @@ Outputs:
 
 ## Learn character voices
 
-After the first run, inspect the diarization IDs and create `speaker-map.yaml`:
+After the first run, inspect diarization IDs and create `speaker-map.yaml`:
 
 ```yaml
 SPEAKER_00: Carrie
@@ -93,9 +93,7 @@ subtitle-fusion run \
   --output-dir out/episode01
 ```
 
-The current pyannote speaker embedding is enrolled in `data/voiceprints/<series>.json`. Later episodes are matched automatically using cosine similarity **plus a minimum margin over the second-best character**.
-
-Weak matches remain unknown.
+The pyannote speaker embedding is enrolled in `data/voiceprints/<series>.json`. Later episodes are matched automatically using cosine similarity plus a minimum margin over the second-best character. Weak matches remain unknown.
 
 ## SDH behavior
 
@@ -107,7 +105,7 @@ Examples:
 Where are you?
 ```
 
-When an active-speaker/vision adapter has established that an identified character is speaking off-screen:
+When an active-speaker/vision adapter establishes that an identified character is speaking off-screen:
 
 ```text
 Carrie: Where are you?
@@ -119,21 +117,21 @@ Music is treated separately:
 ♪ musique ♪
 ```
 
-The pipeline intentionally does not label every visible line with a character name. Debug metadata can be rich; the subtitle should stay readable.
+Debug metadata can be rich; visible subtitles should stay readable.
 
 ## Fast video text strategy
 
 Full OCR on every frame is explicitly rejected.
 
-Preferred gate:
-- Intel/OpenVINO `horizontal-text-detection-0001`
-- real-time demo: https://docs.openvino.ai/2024/openvino-workflow/model-server/ovms_demo_horizontal_text_detection.html
+Current scout candidates, in benchmark order to test locally:
 
-The detector only decides **where text exists**. Recognition then runs on new or changed text crops only. Stable crops are tracked and cached across frames.
+1. **PaddleOCR `PP-OCRv5_mobile_det`** — official T4 high-performance inference: **6.36 ms/image**, CPU high-performance: **28.15 ms/image**.
+2. **`PP-OCRv6_tiny_det`** — 0.43M parameters / 1.9 MB; benchmark locally because current official timing uses A100.
+3. **OpenVINO `horizontal-text-detection-0001`** — excellent horizontal specialist; official async video demo around **25.6 FPS** at 704x704.
 
-For rotated or difficult text, a heavier detector is only used as a fallback on selected frames/crops.
+Start with scene cuts + about **0.5 fps** periodic detection, track boxes, hash crops, and OCR only new/changed text. For a 45-minute episode that periodic baseline is only 1,350 frames instead of 67,500 frames at 25 fps.
 
-See `docs/PERFORMANCE_REFERENCES.md` for the benchmark numbers and links.
+See `docs/PERFORMANCE_REFERENCES.md` for exact hardware, caveats and derived 45-minute estimates.
 
 ## Agent-friendly repository
 
@@ -152,9 +150,11 @@ See `docs/PERFORMANCE_REFERENCES.md` for the benchmark numbers and links.
 - character names must be story-safe
 - only plot-relevant sound events should reach visible subtitles
 - expensive video/audio models should be gated by cheap detectors whenever possible
+- local measured p50/p95 timing is the authority over external benchmark projections
 
 ## Next extensions
 
-1. OpenVINO sparse text detector + text-track cache + recognizer adapter
-2. Active-speaker detection, benchmarking LR-ASD before TalkNet
-3. Tiny sound-event scout before heavier PANNs verification
+1. Paddle mobile/tiny text scout + text-track cache + recognizer adapter
+2. Local benchmark harness for all providers
+3. Active-speaker detection, benchmarking LR-ASD before TalkNet
+4. Tiny sound-event scout before heavier PANNs verification
