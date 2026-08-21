@@ -11,6 +11,7 @@ class Word:
     end: float
     confidence: float | None = None
     flags: list[str] = field(default_factory=list)
+    speaker_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -43,6 +44,15 @@ class MusicInfo:
 
 
 @dataclass(slots=True)
+class SpeakerTurn:
+    start: float
+    end: float
+    speaker_id: str
+    confidence: float | None = None
+    overlap_speakers: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Decision:
     status: str
     final_text: str
@@ -60,6 +70,9 @@ class Segment:
     text_raw: str
     words: list[Word] = field(default_factory=list)
     speaker_name_candidate: str | None = None
+    speaker_identity_confidence: float | None = None
+    diarization_confidence: float | None = None
+    overlap_speakers: list[str] = field(default_factory=list)
     character_candidate: str | None = None
     actor_candidate: str | None = None
     text_corrected: str | None = None
@@ -87,6 +100,9 @@ class MediaContext:
 class PipelineResult:
     media: MediaContext
     segments: list[Segment]
+    speaker_turns: list[SpeakerTurn] = field(default_factory=list)
+    speaker_embeddings: dict[str, list[float]] = field(default_factory=dict)
+    language: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
