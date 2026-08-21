@@ -146,27 +146,43 @@ def build_speaker_turns(frame: Any) -> list[SpeakerTurn]:
     ]
     turns.sort(key=lambda turn: (turn.start, turn.end, turn.speaker_id))
 
-    for turn in turns:
-        overlapping = {
-            other.speaker_id
-            for other in turns
-            if other is not turn
-            and other.speaker_id != turn.speaker_id
-            and other.start < turn.end
-            and other.end > turn.start
-        }
-        turn.overlap_speakers = sorted(overlapping)
+    # Sweep only forward until starts are outside the current turn. Real-world
+    # diarization has sparse overlaps, so this stays close to linear rather than
+    # comparing every turn with every other turn.
+    for index, turn in enumerate(turns):
+        cursor = index + 1
+        while cursor < len(turns) and turns[cursor].start < turn.end:
+            other = turns[cursor]
+            if other.end > turn.start and other.speaker_id != turn.speaker_id:
+                if other.speaker_id not in turn.overlap_speakers:
+                    turn.overlap_speakers.append(other.speaker_id)
+                if turn.speaker_id not in other.overlap_speakers:
+                    other.overlap_speakers.append(turn.speaker_id)
+            cursor += 1
 
+    for turn in turns:
+        turn.overlap_speakers.sort()
     return turns
 
 
 def attach_overlap_evidence(segments: list[Segment], turns: Sequence[SpeakerTurn]) -> None:
-    for segment in segments:
-        speakers = {
-            turn.speaker_id
-            for turn in turns
-            if turn.start < segment.end and turn.end > segment.start
-        }
+    if not segments or not turns:
+        return
+
+    ordered_turns = sorted(turns, key=lambda turn: (turn.start, turn.end))
+    cursor = 0
+    for segment in sorted(segments, key=lambda item: (item.start, item.end, item.id)):
+        while cursor < len(ordered_turns) and ordered_turns[cursor].end <= segment.start:
+            cursor += 1
+
+        speakers: set[str] = set()
+        index = cursor
+        while index < len(ordered_turns) and ordered_turns[index].start < segment.end:
+            turn = ordered_turns[index]
+            if turn.end > segment.start:
+                speakers.add(turn.speaker_id)
+            index += 1
+
         if len(speakers) > 1:
             segment.overlap_speakers = sorted(speakers)
 
