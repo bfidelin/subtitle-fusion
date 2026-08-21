@@ -422,6 +422,8 @@ lyrics confidence + track metadata/context
 
 Do not run Demucs across an entire episode by default. Run it only on musical windows where vocal isolation is likely to improve lyric transcription or dialogue recovery.
 
+Use `https://github.com/adefossez/demucs` as the canonical Demucs source. It is the official repository maintained after Alexandre Défossez left Meta. As of 2026-08-21 the model generation is still Demucs v4 / Hybrid Transformer Demucs; this repository transition is not a Demucs v5 release. The project is in maintenance mode with important fixes rather than active feature development. Benchmark `htdemucs` first; use `htdemucs_ft` only as a selected-window quality escalation when its extra cost is justified.
+
 Intel/OpenVINO prior art is useful here: the OpenVINO AI plugins for Audacity demonstrate both Whisper-oriented transcription and Demucs-based music separation. The project should copy the architectural idea, not bind itself to Intel hardware.
 
 ## Backend strategy
@@ -453,7 +455,7 @@ AUDIO_EVENTS
 - YAMNet / AudioSet family
 
 SOURCE_SEPARATION
-- Demucs CUDA
+- Demucs v4 / HTDemucs CUDA
 - OpenVINO Demucs
 
 SHOT_DETECTION
@@ -526,7 +528,8 @@ The exact percentages must be measured on real episodes. Add profiling for:
 - RapidOCR: https://github.com/RapidAI/RapidOCR
 - PaddleOCR / PP-OCR: https://github.com/PaddlePaddle/PaddleOCR
 - YAMNet: https://www.tensorflow.org/hub/tutorials/yamnet
-- Demucs: https://github.com/facebookresearch/demucs
+- Demucs (official maintained fork): https://github.com/adefossez/demucs
+- Demucs legacy Meta repository (archived): https://github.com/facebookresearch/demucs
 - Intel OpenVINO AI plugins for Audacity: https://github.com/intel/openvino-plugins-ai-audacity
 
 These are implementation references, not mandatory dependencies. Provider interfaces should allow replacements without changing subtitle semantics.
