@@ -6,10 +6,11 @@ Help Codex, Pi or another coding agent make safe, performance-aware subtitle cha
 ## Fast entry
 1. `AGENTS.md`
 2. `docs/STANDARDS_AND_PRACTICES.md`
-3. `docs/PERFORMANCE_TARGETS.md`
-4. `docs/OPTIMIZATION_PLAYBOOK.md`
-5. `README.md`
-6. relevant provider/config/tests
+3. `docs/TRANSLATOR_QC_CHECKLIST.md`
+4. `docs/PERFORMANCE_TARGETS.md`
+5. `docs/OPTIMIZATION_PLAYBOOK.md`
+6. `README.md`
+7. relevant provider/config/tests
 
 Use `docs/PERFORMANCE_REFERENCES.md` before making model-speed/device/sampling claims.
 
@@ -28,9 +29,12 @@ WhisperX already uses Faster-Whisper. Extra ASR must be selective/local unless m
 Read:
 - `src/media_preflight.py`
 - `docs/OPTIMIZATION_PLAYBOOK.md`
+- `docs/TRANSLATOR_QC_CHECKLIST.md`
 - `config/settings.yaml`
 
-Prefer reusable text subtitle evidence first; prefer PGS/event OCR before arbitrary whole-frame OCR.
+The ffprobe inventory already exists. Do not add a duplicate scanner. The next capability is quality-gated source selection/extraction.
+
+Before trusting an embedded text track, evaluate language, coverage, timestamp sanity, VAD/audio sync, sampled lexical agreement and alternate-edit risk. Prefer PGS/event OCR before arbitrary whole-frame OCR.
 
 ### Diarization / speaker identity
 Read:
@@ -41,9 +45,20 @@ Read:
 
 Keep acoustic speaker ID, character identity and visual visibility separate. Voiceprint matching requires score + second-best margin.
 
-### SDH / professional timing / translation
+### Translation / proofreading / proper names
+Read:
+- `docs/TRANSLATOR_QC_CHECKLIST.md`
+- `docs/STANDARDS_AND_PRACTICES.md`
+- `src/scoring.py`
+- `src/fusion.py`
+- `src/imdb_index.py`
+
+Keep translation, semantic review, grammar/spelling and subtitle adaptation separate. Preserve `text_raw`. Prefer explicit OCR/trusted template/title-scoped metadata/validated glossary over phonetic guessing for names.
+
+### SDH / professional timing
 Read:
 - `docs/STANDARDS_AND_PRACTICES.md`
+- `docs/TRANSLATOR_QC_CHECKLIST.md`
 - `docs/NETFLIX_FR_STYLE.md`
 - `docs/SDH_STYLE_GUIDE.md`
 - `src/netflix_style.py`
@@ -90,7 +105,8 @@ Benchmark LR-ASD before TalkNet. Analyze speech windows only, reuse face tracks 
 ### Synchronization / alignment optimization
 Read:
 - `docs/OPTIMIZATION_PLAYBOOK.md`
-- `docs/STANDARDS_AND_PRACTICES.md`
+- `docs/PERFORMANCE_TARGETS.md`
+- `docs/TRANSLATOR_QC_CHECKLIST.md`
 
 Try cheap global VAD/subtitle sync and quality scoring before expensive word-level repair. Escalate to piecewise alignment only for alternate edits/cuts/drift.
 
@@ -100,16 +116,25 @@ Read:
 - `docs/PERFORMANCE_REFERENCES.md`
 - `docs/OPTIMIZATION_PLAYBOOK.md`
 
-Record cold/warm timing, RTF/FPS, pre/infer/post splits, RAM/VRAM, cache hits and scout escalation rates. Local measurements override web projections.
+Record cold/warm timing, RTF/FPS, pre/infer/post splits, RAM/VRAM, source-track quality, sync mode, cache hits and scout escalation rates. Local measurements override web projections.
+
+### Season / batch processing
+Read:
+- `docs/PERFORMANCE_TARGETS.md`
+- `docs/OPTIMIZATION_PLAYBOOK.md`
+
+Keep heavy models resident across episodes, reuse show glossary/voiceprints, bound GPU concurrency and benchmark cold first-episode vs warm steady-state latency.
 
 ## Stable rules
 - never overwrite raw evidence
 - unknown is better than false identity/correction
+- an embedded subtitle track is a candidate reference, not automatic truth
 - provider imports stay lazy when heavy
 - every behavior change gets tests
 - visible SDH remains concise
 - no performance/compliance claim without evidence
 - semantic edits and safe mechanical fixes are different stages
+- planned features must not be described as implemented
 
 ## Validation
 ```bash
@@ -122,5 +147,6 @@ pytest -q
 - tests/lint pass
 - configs/docs agree with behavior
 - evidence stays inspectable in debug output
+- source selection/semantic changes remain traceable
 - heavy runtime remains optional
 - performance-sensitive changes are benchmarkable
