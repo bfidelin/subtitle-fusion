@@ -10,12 +10,15 @@ video
   -> interval-based word/segment speaker assignment
   -> voiceprint identification
   -> PANNs AudioSet event pass
+  -> sparse OpenVINO text detection -> OCR only on detected/changed crops
   -> IMDb/text fusion
   -> SDH renderer
   -> output.debug.json + output.srt + output.ass
 ```
 
 Heavy ML dependencies are optional extras and are imported lazily. This keeps `pytest`, `ruff`, Codex and Pi usable on a laptop or CI runner without CUDA.
+
+For benchmark sources, videos, and the fast-path design rationale, read `docs/PERFORMANCE_REFERENCES.md`.
 
 ## Install
 
@@ -72,7 +75,7 @@ Never force a weak match. Unknown is better than a wrong character name.
 
 The exporter only shows an identified character label when it is useful. With `show_only_when_needed: true`, a name is shown when `speaker_visible == false`.
 
-The active-speaker/vision provider is intentionally a separate extension point. Until TalkNet or another active-speaker detector is connected, `speaker_visible` remains unknown and names stay in debug metadata rather than being spammed on-screen.
+The active-speaker/vision provider is intentionally a separate extension point. Until LR-ASD, TalkNet, or another active-speaker detector is connected, `speaker_visible` remains unknown and names stay in debug metadata rather than being spammed on-screen.
 
 This is deliberate: voice identity and visual visibility are different evidence.
 
@@ -82,22 +85,56 @@ PANNs runs on short overlapping windows. Only labels in `config/audio_analysis.y
 
 `Music` is kept separate from generic effects and becomes `MusicInfo.present`. Avoid dumping every AudioSet label into subtitles.
 
+## Video text / OCR policy
+
+Do **not** run full OCR on every decoded frame.
+
+Preferred first-pass detector:
+
+- Intel/OpenVINO `horizontal-text-detection-0001`
+- model: https://docs.openvino.ai/2023.3/omz_models_model_horizontal_text_detection_0001.html
+- real-time video demo: https://docs.openvino.ai/2024/openvino-workflow/model-server/ovms_demo_horizontal_text_detection.html
+- OpenVINO OCR example: https://docs.openvino.ai/2024/notebooks/optical-character-recognition-with-output.html
+
+Intel describes this model as much faster than its general text detectors. It is approximately 7.8 GFLOPs / 2.26 M parameters and is well suited to the mostly horizontal text common in TV/video: signs, lower thirds, phone/computer screens, location cards, and names.
+
+The intended pipeline is:
+
+```text
+scene cut / sparse frame sampler
+        -> horizontal-text-detection-0001
+              -> no text: skip
+              -> text boxes: track boxes across frames
+                    -> unchanged crop: reuse cached OCR
+                    -> new/changed crop: recognize only that crop
+                          -> temporal voting/confidence
+                          -> OCRHit evidence
+```
+
+Recognition can use OpenVINO `text-recognition-0014`, PaddleOCR/RapidOCR, or another provider. Tesseract is a fallback, not the preferred video path.
+
+For rotated or difficult perspective text, escalate only the relevant frame/crop to a heavier detector (`text-detection-0004`, DBNet/Paddle detector, CRAFT, etc.). Never use the heavyweight fallback on every frame by default.
+
+See `docs/PERFORMANCE_REFERENCES.md` for measured reference FPS and all external links.
+
 ## Codex / Pi work protocol
 
 1. Read `AGENTS.md`.
-2. Read this file and `docs/SDH_STYLE_GUIDE.md`.
+2. Read this file, `docs/PERFORMANCE_REFERENCES.md`, and `docs/SDH_STYLE_GUIDE.md`.
 3. Prefer provider adapters over changes to orchestration.
 4. Keep heavy imports inside provider methods.
 5. Add a fake-provider unit test for every orchestration change.
 6. Preserve `text_raw`.
 7. Do not make a speaker identity visible unless evidence is strong and story-safe.
-8. Run `pytest -q` and `ruff check .` before proposing a merge.
+8. Do not run expensive OCR/vision models globally when a cheap gate can narrow the work.
+9. Run `pytest -q` and `ruff check .` before proposing a merge.
 
 ## Next safe extensions
 
-- active-speaker provider (TalkNet or equivalent) that sets `Segment.speaker_visible`
-- OCR provider wiring
+- OpenVINO sparse text detector provider + crop tracker/cache + recognizer adapter
+- active-speaker provider; benchmark LR-ASD first, with TalkNet as comparison
+- tiny sound-event scout (for example YAMNet) before PANNs verification
 - music mood classifier
-- Demucs + lyric transcription
+- Demucs + lyric transcription only on selected vocal-music windows
 - pluggable commercial track recognition
 - batching/cache reuse across Sonarr/Jellyfin libraries
