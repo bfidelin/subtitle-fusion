@@ -25,6 +25,30 @@ Implemented today:
 
 Do **not** add another whole-episode Faster-Whisper pass before WhisperX: WhisperX already uses Faster-Whisper internally. Any extra ASR should normally be selective/local.
 
+### Reference-first ingestion status
+
+`src/media_preflight.py` already inventories the container before expensive work. It records audio streams and text/image subtitle tracks in debug evidence.
+
+The next step is **not** another media scanner. It is a quality-gated source selector:
+
+```text
+embedded text track
+  -> language / coverage / timing / VAD-sync / lexical quality score
+       | high quality + good sync
+       +-----------------------> reuse + enrich
+       |
+       | high quality + simple offset/drift
+       +-----------------------> repair sync -> reuse + enrich
+       |
+       | alternate edit / piecewise mismatch
+       +-----------------------> piecewise alignment
+       |
+       ` low quality / wrong language / incomplete
+                                -> WhisperX baseline
+```
+
+Until that quality gate is implemented, the presence of an embedded subtitle track must **not** automatically suppress WhisperX.
+
 ## New reference architecture
 
 ```text
@@ -58,6 +82,7 @@ MKV / MP4
 
 Read these first:
 - [`docs/STANDARDS_AND_PRACTICES.md`](docs/STANDARDS_AND_PRACTICES.md) — Netflix fr-FR, SDH, translation, shot timing, QC, W3C/EBU
+- [`docs/TRANSLATOR_QC_CHECKLIST.md`](docs/TRANSLATOR_QC_CHECKLIST.md) — practical translator/reviewer workflow and quality gates
 - [`docs/OPTIMIZATION_PLAYBOOK.md`](docs/OPTIMIZATION_PLAYBOOK.md) — ffsubsync, Alass, Subtitle Edit, stable-ts ideas and production optimization
 - [`docs/PERFORMANCE_TARGETS.md`](docs/PERFORMANCE_TARGETS.md) — 45-minute wall-clock targets and provider decisions
 - [`docs/PERFORMANCE_REFERENCES.md`](docs/PERFORMANCE_REFERENCES.md) — benchmark sources and useful videos
@@ -81,6 +106,26 @@ The important next timing extension is **shot-aware timing**. Subtitle boundarie
 ### Standards master direction
 
 SRT remains the compatibility-first playback target and ASS the rich local target. For a standards-based rich interchange/archive format, the project direction is **W3C IMSC Text Profile 1.3 (TTML2)**, which became a W3C Recommendation in May 2026. Do not claim IMSC compliance until the exporter and validator exist.
+
+## Translation and proofreading
+
+Translation is a separate semantic stage, not a formatter side effect. The intended sequence is:
+
+```text
+source/template choice
+ -> glossary + proper names
+ -> translation candidate
+ -> semantic/context review
+ -> grammar/spelling/punctuation review
+ -> subtitle adaptation
+ -> SDH/forced-narrative review
+ -> shot-aware timing
+ -> final QC
+```
+
+Keep independent confidence for ASR, OCR, proper names, source-track quality, synchronization, translation semantics and linguistic QA. A high score in one dimension does not cancel a contradiction in another.
+
+See [`docs/TRANSLATOR_QC_CHECKLIST.md`](docs/TRANSLATOR_QC_CHECKLIST.md).
 
 ## Fast OCR
 
@@ -138,6 +183,22 @@ Reference workload: 45-minute episode, warm models.
 
 These are targets, not promises. The planned benchmark harness will record stage timing, RTF/FPS, memory, escalation/cache rates and critical path in `output.benchmark.json`.
 
+### Season/batch objective
+
+For a season queue, heavy models should be loaded once and reused:
+
+```text
+load WhisperX / pyannote / OCR / audio models once
+              |
+       E01 -> E02 -> E03 -> ...
+              |
+      shared show glossary
+      shared voiceprints
+      bounded caches
+```
+
+Do not pay model cold-start cost once per episode. Bound GPU concurrency to avoid VRAM thrash; prefetch/decode only when it does not compete with the critical GPU stage.
+
 ## Install
 
 Core/tests:
@@ -180,9 +241,9 @@ Current outputs:
 
 ## Next implementation order
 
-1. wire media preflight into reference-first ingestion/extraction
+1. select/extract/reuse existing subtitle tracks with language/coverage/sync/quality gates (**preflight inventory is already implemented**)
 2. compute/cache one shot map and reuse it for timing + OCR + ASD
-3. add cheap VAD/global sync quality preflight (FFT/sparse-segment inspired)
+3. add cheap VAD/global sync quality preflight, then piecewise fallback for alternate edits
 4. make post-ASR segmentation/QC deterministic with CPS + WPM + shot-aware rules
 5. implement sparse Paddle text detector + track/cache + crop recognizer
 6. connect voiceprints to character identity enrollment/matching
