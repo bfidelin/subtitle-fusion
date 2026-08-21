@@ -1,15 +1,38 @@
 audio_events:
-  provider: yamnet
+  provider: panns
   enabled: true
-  min_event_score: 0.65
+  device: cuda
+  min_event_score: 0.68
+  window_seconds: 2.0
+  hop_seconds: 1.0
   merge_adjacent_events: true
+  music_labels:
+    - Music
+  labels_allowlist:
+    - Music
+    - Door
+    - Doorbell
+    - Knock
+    - Telephone bell ringing
+    - Ringtone
+    - Gunshot, gunfire
+    - Explosion
+    - Siren
+    - Laughter
+    - Crying, sobbing
+    - Applause
+    - Dog
+    - Glass
+    - Breaking
+    - Vehicle
+    - Engine
 
 music_detection:
-  provider: essentia
+  provider: panns
   enabled: true
   detect_music_presence: true
-  detect_vocal_vs_instrumental: true
-  detect_mood: true
+  detect_vocal_vs_instrumental: false
+  detect_mood: false
 
 track_recognition:
   provider_order:
