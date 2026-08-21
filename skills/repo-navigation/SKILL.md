@@ -1,91 +1,85 @@
 # Repo navigation skill
 
 ## Purpose
-Help a coding agent enter this repository quickly and make safe changes.
+Help Codex, Pi, or another coding agent make safe changes quickly.
 
-## Goal of the repository
-The project builds enriched subtitles from video using:
-- ASR output and uncertainty markers
-- OCR from frames
-- IMDb title and character context
-- SDH style rules
-- optional audio-event, music, track-recognition, and lyric-assistance hooks
+## Fast entry
+1. `AGENTS.md`
+2. `docs/PIPELINE_RUNTIME.md`
+3. `README.md`
+4. the relevant policy/config
+5. implementation + matching tests
 
-## Fast entry sequence
-1. Read `AGENTS.md`
-2. Read `docs/REPO_MAP.md`
-3. Read `README.md`
-4. Read the relevant policy doc:
-   - `docs/SDH_STYLE_GUIDE.md`
-   - `docs/AUDIO_EVENTS_AND_MUSIC.md`
-5. Read the relevant config file under `config/`
-6. Read the code file you plan to modify
-7. Read the matching test file under `tests/`
+## Task routes
 
-## If the task is about...
-### Subtitle text correction
+### ASR / timestamps
 Read:
+- `src/asr.py`
+- `src/media.py`
 - `src/models.py`
+- `config/settings.yaml`
+
+Keep WhisperX imports lazy. ASR must not own speaker identity.
+
+### Diarization / speaker assignment
+Read:
+- `src/diarization.py`
+- `src/voiceprints.py`
+- `tests/test_diarization.py`
+- `tests/test_voiceprints.py`
+
+Community-1 returns speaker embeddings. Preserve raw `SPEAKER_*` IDs in debug data.
+
+### Character names / voiceprints
+Read:
+- `src/voiceprints.py`
+- `docs/PIPELINE_RUNTIME.md`
+- `config/settings.yaml`
+
+Never force a match below both score and margin thresholds.
+
+### SDH / off-screen labels
+Read:
+- `src/exporters.py`
+- `config/style_rules.yaml`
+- `docs/SDH_STYLE_GUIDE.md`
+- `tests/test_exporters_sdh.py`
+
+Voice identity is not visibility. Only an active-speaker/vision provider may set `speaker_visible`.
+
+### Audio events / music
+Read:
+- `src/audio_music.py`
+- `config/audio_analysis.yaml`
+- `docs/AUDIO_EVENTS_AND_MUSIC.md`
+
+Prefer a small allowlist and merge repeated windows.
+
+### Text correction
+Read:
 - `src/scoring.py`
 - `src/fusion.py`
-- `tests/test_scoring.py`
-- `tests/test_fusion.py`
-- `tests/test_uncertain_words.py`
-
-### Speaker labels or SDH output
-Read:
-- `docs/SDH_STYLE_GUIDE.md`
-- `config/style_rules.yaml`
-- `src/exporters.py`
-
-### IMDb or character disambiguation
-Read:
 - `src/imdb_index.py`
-- `src/fusion.py`
-- `docs/SDH_STYLE_GUIDE.md`
+- matching tests
 
-### Audio events, music, or lyrics
-Read:
-- `docs/AUDIO_EVENTS_AND_MUSIC.md`
-- `config/audio_analysis.yaml`
-- `src/audio_music.py`
-- `src/track_recognition.py`
-- `src/pipeline.py`
-
-## Stable rules
-- Do not overwrite `text_raw`.
-- Use `decision` and `text_corrected` for corrections.
-- Prefer small, local changes.
-- Add or update tests with behavior changes.
-- Keep visible subtitle output concise.
-- Prefer metadata/debug JSON for rich evidence.
-- Do not reveal character names before the story reveals them.
-
-## Output expectations
-When changing logic, keep these outputs coherent:
-- `output.debug.json`
-- `output.srt`
-- `output.ass`
+Never overwrite `text_raw`.
 
 ## Validation
-Use:
 ```bash
-pip install -e .[dev]
+pip install -e '.[dev]'
 pytest -q
+ruff check .
 ```
 
-## Smoke test
+For model-level smoke tests:
 ```bash
-subtitle-fusion run \
-  --video /tmp/fake-video.mkv \
-  --title "Example Show" \
-  --season 1 \
-  --episode 3 \
-  --imdb-title-id tt1234567 \
-  --output-dir /tmp/subtitle-fusion-out
+pip install -e '.[runtime]'
+export HUGGINGFACE_TOKEN=...
 ```
 
-## What good changes look like
-- add one small capability
-- update docs/config if behavior changes
-- keep the repo navigable for the next agent
+## Definition of done
+- behavior covered by tests
+- configs/docs updated with semantics
+- no eager heavy-model import
+- debug JSON preserves evidence
+- SRT/ASS remain concise
