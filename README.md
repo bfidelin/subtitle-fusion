@@ -83,6 +83,7 @@ MKV / MP4
 
 Read these first:
 - [`docs/STANDARDS_AND_PRACTICES.md`](docs/STANDARDS_AND_PRACTICES.md) — Netflix fr-FR, SDH, translation, shot timing, QC, W3C/EBU
+- [`docs/SDH_SEMANTICS_AND_SPEAKER_ROLES.md`](docs/SDH_SEMANTICS_AND_SPEAKER_ROLES.md) — narrator/voice-over/off-screen roles, locale-aware SDH punctuation, sparse visual identity and active-speaker fusion
 - [`docs/TRANSLATOR_QC_CHECKLIST.md`](docs/TRANSLATOR_QC_CHECKLIST.md) — practical translator/reviewer workflow and quality gates
 - [`docs/OPTIMIZATION_PLAYBOOK.md`](docs/OPTIMIZATION_PLAYBOOK.md) — ffsubsync, Alass, Subtitle Edit, stable-ts ideas and production optimization
 - [`docs/PERFORMANCE_TARGETS.md`](docs/PERFORMANCE_TARGETS.md) — 45-minute wall-clock targets and provider decisions
@@ -105,6 +106,24 @@ Current profile/QC includes:
 - machine-readable compliance report
 
 The important next timing extension is **shot-aware timing**. Subtitle boundaries must use both the waveform and edit/shot structure; a formatter may not silently rewrite meaning to make metrics pass.
+
+### SDH semantic model
+
+Do not preserve source punctuation blindly across locales. Parse the semantic event first, then render it according to the active profile.
+
+Examples:
+
+```text
+two speakers            -> locale-specific hyphen syntax
+abrupt interruption     -> `--` in en-US / `…` in fr-FR Netflix profile
+hesitation/trail-off     -> ellipsis semantics
+[narrator]               -> speaker-role evidence
+[scoffs]                 -> sound-event evidence
+Mm-hmm / Uh / Um         -> paralinguistic speech evidence
+quoted speech            -> quote state preserved across cue segmentation
+```
+
+Speaker labels may appear on a separate physical SRT line or inline with dialogue; both should normalize to the same internal evidence.
 
 ### SRT-first output policy
 
@@ -163,18 +182,48 @@ Around newly appearing text, temporarily increase sampling to roughly 2–5 fps,
 
 The same OCR/text bounding boxes should later feed the SRT placement engine, so text detection can both recognize on-screen content and tell the renderer where **not** to place dialogue subtitles.
 
-## Speaker identity
+## Speaker identity, role and visual evidence
 
 Keep these separate:
+
 ```text
 speaker_id       = acoustic diarization cluster
 character_name   = voice/context identity hypothesis
-speaker_visible  = active-speaker/visual evidence
+speaker_role     = dialogue | narrator | voice_over | announcer | ...
+speaker_visible  = visual evidence
+active_face      = face track currently speaking, if known
 ```
 
 `src/voiceprints.py` stores bounded per-series samples and requires both an absolute cosine threshold and a margin over the second-best identity. Weak matches remain unknown.
 
-A failed face detector is **not** proof that speech is off-screen.
+A failed face detector is **not** proof that speech is off-screen. Likewise, off-screen speech is not automatically voice-over, and voice-over is not automatically narrator.
+
+Narrator/role resolution should fuse:
+- trusted source labels such as `[narrator]`
+- recurrent role voiceprints
+- contextual LLM classification over neighboring cues
+- structural intro/recap/transition/outro context
+- visual/active-speaker evidence
+
+The LLM is one evidence source, not an authority.
+
+### Sparse visual sampling
+
+Do not recognize faces on every frame. Visual identity should be triggered by the events that matter:
+
+```text
+new shot
+speaker turn start  -> sample ~+200/300 ms inside speech
+speaker turn end    -> sample ~-200/300 ms inside speech
+shot change during speech
+speaker change / overlap
+long turn midpoint only if needed
+face-track loss/new face
+```
+
+At cuts, prefer a clean representative frame shortly after the transition over the exact cut frame. Face detection, face identity and active-speaker detection remain separate stages. LR-ASD is the preferred first active-speaker candidate, run only on speech windows while reusing face tracks.
+
+See [`docs/SDH_SEMANTICS_AND_SPEAKER_ROLES.md`](docs/SDH_SEMANTICS_AND_SPEAKER_ROLES.md).
 
 ## Audio / music
 
@@ -195,6 +244,8 @@ Lyrics search is an **identification/context tool**, not a license to download o
 
 Never run Demucs over a complete episode by default.
 
+Opening/ending themes should eventually be learned as local recurring fingerprints after high-confidence identification, so later episodes can recognize them without repeated web lookup or source separation.
+
 See [`docs/AUDIO_EVENTS_AND_MUSIC.md`](docs/AUDIO_EVENTS_AND_MUSIC.md) and [`docs/SONG_IDENTIFICATION.md`](docs/SONG_IDENTIFICATION.md).
 
 ## Performance objective
@@ -210,12 +261,13 @@ These are targets, not promises. The planned benchmark harness will record stage
 For a season queue, heavy models should be loaded once and reused:
 
 ```text
-load WhisperX / pyannote / OCR / audio models once
+load WhisperX / pyannote / OCR / audio / vision models once
               |
        E01 -> E02 -> E03 -> ...
               |
       shared show glossary
-      shared voiceprints
+      shared voiceprints/role memory
+      recurring theme fingerprints
       bounded caches
 ```
 
@@ -266,16 +318,18 @@ No IMSC/TTML file is generated.
 ## Next implementation order
 
 1. select/extract/reuse existing subtitle tracks with language/coverage/sync/quality gates (**preflight inventory is already implemented**)
-2. compute/cache one shot map and reuse it for timing + OCR + ASD
+2. compute/cache one shot map and reuse it for timing + OCR + ASD/vision
 3. add cheap VAD/global sync quality preflight, then piecewise fallback for alternate edits
-4. make post-ASR segmentation/QC deterministic with CPS + WPM + shot-aware rules
+4. make post-ASR segmentation/QC deterministic with CPS + WPM + shot-aware + SDH semantic rules
 5. implement sparse Paddle text detector + track/cache + crop recognizer
 6. add collision-aware SRT placement using OCR/shot evidence
-7. connect voiceprints to character identity enrollment/matching
-8. connect YAMNet-class scout -> PANNs verifier
-9. add sparse LR-ASD active-speaker provider
-10. add lyric-fragment song identification + optional AcoustID/MusicBrainz confirmation
-11. add benchmark harness and warm season worker/model residency
+7. connect voiceprints to character identity and bounded narrator/role enrollment
+8. add contextual speaker-role resolver (`narrator`, `voice_over`, `off_screen`, `announcer`, etc.)
+9. connect YAMNet-class scout -> PANNs verifier
+10. add sparse face detector/tracker/embedding identity path sampled from shots + speaker turns
+11. add sparse LR-ASD active-speaker provider and multimodal face/voice/context fusion
+12. add lyric-fragment song identification + optional AcoustID/MusicBrainz confirmation + recurring theme memory
+13. add benchmark harness and warm season worker/model residency
 
 IMSC is intentionally **not** in the active roadmap.
 
