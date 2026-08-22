@@ -8,17 +8,18 @@ Build a fast enriched-subtitle pipeline combining WhisperX/pyannote, reuse of ex
 ## Read first
 1. `README.md`
 2. `docs/STANDARDS_AND_PRACTICES.md`
-3. `docs/TRANSLATOR_QC_CHECKLIST.md`
-4. `docs/PERFORMANCE_TARGETS.md`
-5. `docs/OPTIMIZATION_PLAYBOOK.md`
-6. `docs/FAST_SCOUT_PIPELINE.md`
-7. `docs/AUDIO_EVENTS_AND_MUSIC.md`
-8. `docs/SONG_IDENTIFICATION.md` when changing music/lyrics/track recognition
-9. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
-10. `docs/NETFLIX_FR_STYLE.md`
-11. `docs/SDH_STYLE_GUIDE.md`
-12. `docs/PERFORMANCE_REFERENCES.md` when making performance/model claims
-13. relevant code/config/tests
+3. `docs/SDH_SEMANTICS_AND_SPEAKER_ROLES.md`
+4. `docs/TRANSLATOR_QC_CHECKLIST.md`
+5. `docs/PERFORMANCE_TARGETS.md`
+6. `docs/OPTIMIZATION_PLAYBOOK.md`
+7. `docs/FAST_SCOUT_PIPELINE.md`
+8. `docs/AUDIO_EVENTS_AND_MUSIC.md`
+9. `docs/SONG_IDENTIFICATION.md` when changing music/lyrics/track recognition
+10. `docs/WHISPERX_PYANNOTE_RUNTIME.md`
+11. `docs/NETFLIX_FR_STYLE.md`
+12. `docs/SDH_STYLE_GUIDE.md`
+13. `docs/PERFORMANCE_REFERENCES.md` when making performance/model claims
+14. relevant code/config/tests
 
 ## Runtime baseline
 `WhisperXProvider` supplies whole-episode Faster-Whisper ASR, forced word alignment and pyannote Community-1 diarization/embeddings/overlap evidence.
@@ -53,8 +54,10 @@ PGS/image subtitle streams should be processed at subtitle-event/bitmap level be
 - Preserve `text_raw`; never overwrite raw evidence.
 - Semantic edits must be traceable; formatters may not invent or silently paraphrase dialogue.
 - Unknown speaker/character is better than a false identity.
-- `speaker_id`, character identity and visual visibility are separate evidence.
-- Failed face detection is not proof of off-screen speech.
+- Keep `speaker_id`, character identity, speaker role, visual visibility and active-speaker evidence separate.
+- `no face` is not `off_screen`; `off_screen` is not `voice_over`; `voice_over` is not `narrator`.
+- A narrator is a semantic/editorial role resolved from trusted labels, recurring voice, scene structure and context; never infer it solely from absence of a face.
+- Contextual LLM role classification is evidence, not automatic truth; preserve component confidence/reasons and contradictions.
 - Preserve overlapping-speaker evidence.
 - Do not reveal names before the story establishes them.
 - Visible SDH stays concise; rich evidence belongs in debug output.
@@ -62,11 +65,24 @@ PGS/image subtitle streams should be processed at subtitle-event/bitmap level be
 - Heavy ML imports stay lazy so core tests run without GPU packages.
 - Model/provider changes require fake/small-data tests.
 - Local measured performance overrides external projections.
-- Keep ASR, source-track quality, sync, OCR, identity, translation and linguistic-QA confidence independently inspectable.
+- Keep ASR, source-track quality, sync, OCR, identity, role, visibility, translation and linguistic-QA confidence independently inspectable.
 - **SRT is the primary playback output.**
 - **IMSC/TTML is inactive. Do not add an exporter, dependency, config path or roadmap item unless the user explicitly re-enables it.**
 - **Do not scrape/store complete copyrighted lyrics as a project dataset.** Lyric web search is for song identification/context using short ASR fragments and candidate metadata.
 - External track/lyrics results are evidence, not automatic truth; conflicting providers must remain inspectable.
+
+## SDH semantic parsing/rendering
+Follow `docs/SDH_SEMANTICS_AND_SPEAKER_ROLES.md`.
+
+Source subtitle syntax must be parsed into semantics before localization. In particular:
+- normalize `[narrator]\nText` and `[narrator] Text` to the same speaker-role evidence
+- keep speaker IDs/sound labels separate from dialogue text
+- distinguish dual speakers from literal leading hyphens
+- store interruption/hesitation/trail-off intent instead of blindly preserving punctuation across locales
+- preserve quote state across cue resegmentation
+- keep relevant paralinguistic tokens (`Mm-hmm`, `Uh`, `Um`, etc.) unless an explicit editorial reduction removes them
+- render U+2026 `…` when an ellipsis is required by the active profile
+- do not count speaker/sound/position markup as dialogue CPL/CPS/WPM text
 
 ## Translation / proofreading policy
 Follow `docs/TRANSLATOR_QC_CHECKLIST.md`.
@@ -131,7 +147,31 @@ scene cuts + ~0.5 fps
  -> temporal voting
 ```
 
-Active speaker: speech windows only, reuse face tracks, benchmark LR-ASD before TalkNet.
+### Sparse visual identity / active speaker
+Never perform heavy face identity work on every video frame.
+
+Primary visual sampling triggers:
+```text
+new shot
+speaker-turn start (~+200/300 ms inside speech)
+speaker-turn end   (~-200/300 ms inside speech)
+shot change during speech
+speaker change / overlap
+long turn midpoint only when useful
+face-track loss/new face
+```
+
+At a shot cut, prefer a representative frame shortly after the transition rather than the exact cut frame.
+
+Pipeline separation:
+```text
+face detection -> face tracking -> selected face crops -> face embedding
+ -> identity hypothesis
+
+speech window + face tracks -> active-speaker detector
+```
+
+Active speaker: speech windows only, reuse face tracks, benchmark LR-ASD before TalkNet. Face identity and active-speaker confidence are independent evidence.
 
 Audio: cheap AudioSet/YAMNet-class scout -> PANNs verifier -> selected singing windows only. For song identification, follow `docs/SONG_IDENTIFICATION.md`: vocal ASR -> distinctive lyric fragments -> web candidate search, with optional Chromaprint/AcoustID in parallel -> candidate fusion -> MusicBrainz metadata confirmation. Demucs/HTDemucs runs only where vocal isolation is expected to improve the result.
 
@@ -149,24 +189,28 @@ A single cached shot map should serve:
 - subtitle timing
 - OCR sampling
 - face/ASD track refresh
-- structural discontinuity/recap detection
+- structural discontinuity/recap/intro/outro detection
 - subtitle placement stability/reset
 
 A shared audio/VAD derivative should serve synchronization and routing where compatible. Cache keys must include media fingerprint and relevant model/config versions.
 
-## Character voiceprints
+## Character voiceprints and role memory
 Use `src/voiceprints.py` with both:
 - minimum absolute similarity
 - minimum margin over the second-best identity
 
 Keep bounded enrollment history and leave weak matches unknown.
 
+Trusted SDH speaker-role labels such as `[narrator]` may later supervise a separate bounded **role voiceprint** enrollment path. Do not mix role centroids with character/person identity centroids, and do not enroll from one weak cue.
+
+Recurring opening/ending themes may similarly be learned as local fingerprints after high-confidence identification so later episodes do not require repeated web lookup or Demucs.
+
 ## Season/batch workers
 For season/library processing:
 - load heavy models once and keep them warm
-- reuse show glossary and voiceprint centroids
+- reuse show glossary, voiceprints, role memory and stable theme fingerprints
 - bound GPU concurrency to avoid VRAM thrash
-- do not reload WhisperX/pyannote/OCR/audio models for every episode
+- do not reload WhisperX/pyannote/OCR/audio/vision models for every episode
 - prefetch/decode the next episode only when it does not slow the bottleneck stage
 
 ## Output policy
@@ -198,6 +242,9 @@ pip install -e '.[audio]'
 - no eager heavy-model import
 - raw/debug evidence preserved
 - source/reference selection and semantic edits are traceable
+- role/identity/visibility/active-speaker evidence remains separable and explainable
+- `no face -> narrator` or `no face -> off-screen` shortcuts are not introduced
+- locale-specific interruption/ellipsis/dual-speaker syntax is rendered from semantic intent
 - SRT remains a valid primary output
 - no inactive IMSC/TTML runtime path is introduced
 - lyric/track-identification code does not persist full web lyrics and has offline/fake-provider tests
