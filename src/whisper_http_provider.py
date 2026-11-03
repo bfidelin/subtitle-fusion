@@ -255,35 +255,3 @@ class WhisperHttpResult:
     speaker_turns: list["SpeakerTurn"]
     speaker_embeddings: dict[str, list[float]]
     language: str | None = None
-
-
-def _coalesce_http_segments(segments: list[Segment]) -> list[Segment]:
-    """Merge very short neighbouring cues into readable Netflix-style blocks.
-
-    Faster-Whisper + alignment can produce tiny VAD fragments. This pass does not
-    invent or shorten text; it only joins cues that are close in time and fit two
-    42-character lines, so plotting a title sentence stays on the intended cue block.
-    """
-    merged: list[Segment] = []
-    for segment in segments:
-        if not merged:
-            merged.append(segment)
-            continue
-        previous = merged[-1]
-        gap = float(segment.start) - float(previous.end)
-        combined = len(previous.text_raw) + 1 + len(segment.text_raw)
-        previous_short = len(previous.words) < 3 or previous.end - previous.start < 0.5
-        if gap <= 0.5 and (previous_short or combined <= 84):
-            previous.end = max(float(previous.end), float(segment.end))
-            previous.text_raw = f"{previous.text_raw} {segment.text_raw}".strip()
-            previous.words.extend(segment.words)
-            previous.speaker_id = (
-                previous.speaker_id
-                if previous.speaker_id == segment.speaker_id
-                else previous.speaker_id
-            )
-        else:
-            merged.append(segment)
-    for index, segment in enumerate(merged, start=1):
-        segment.id = index
-    return merged
