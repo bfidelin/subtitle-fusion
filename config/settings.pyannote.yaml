@@ -1,3 +1,8 @@
+context_terms:
+  Blodak: Below Deck
+  Blow Deck: Below Deck
+  Blow deck: Below Deck
+  blodak: Below Deck
 ocr:
   active_text_fps_max: 5.0
   active_text_fps_min: 2.0

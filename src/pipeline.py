@@ -394,10 +394,18 @@ def run_pipeline(
             for index, segment in enumerate(segments):
                 if not segment_needs_review(segment, scoring_cfg):
                     continue
-                candidate_names = sorted({candidate.name for candidate in getattr(segment, "imdb_candidates", [])})
-                context = raw_texts[max(0, index - 2):] if False else raw_texts[max(0, index - 2):index] + raw_texts[index + 1:index + 3]
+                candidate_names = sorted(
+                    {candidate.name for candidate in getattr(segment, "imdb_candidates", [])}
+                )
+                context = (
+                    raw_texts[max(0, index - 2) :]
+                    if False
+                    else raw_texts[max(0, index - 2) : index] + raw_texts[index + 1 : index + 3]
+                )
                 try:
-                    final, changed, reason = review_text(segment.final_text(), candidate_names, context, cfg)
+                    final, changed, reason = review_text(
+                        segment.final_text(), candidate_names, context, cfg
+                    )
                 except Exception as exc:
                     meta["llm_review_warning"] = str(exc)
                     continue
@@ -405,7 +413,12 @@ def run_pipeline(
                 if changed:
                     accepted += 1
                     segment.text_corrected = final
-            meta["llm_review"] = {"enabled": True, "reviewed": reviewed, "accepted": accepted, "model": cfg.model}
+            meta["llm_review"] = {
+                "enabled": True,
+                "reviewed": reviewed,
+                "accepted": accepted,
+                "model": cfg.model,
+            }
         except Exception as exc:
             meta["llm_review"] = {"enabled": True, "error": str(exc)}
 
