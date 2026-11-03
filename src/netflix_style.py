@@ -312,3 +312,81 @@ def validate_result(segments: list[Segment], style: NetflixStyle) -> list[Compli
                 )
             )
     return issues
+
+
+def apply_netflix_segmentation(segments: list[Segment], style: NetflixStyle) -> list[Segment]:
+    """Split oversized transcript cues before line wrapping.
+
+    `format_netflix_text` only wraps two lines; it never re-times cues. Applying it
+    to a 9-word ASR cue leaves an oversized subtitle. This pass redistributes
+    consecutive words into two-to-line-safe cues while preserving every word and
+    its original word-level timing. It does not paraphrase.
+    """
+    hard_limit = style.max_chars_per_line * style.max_lines
+    result: list[Segment] = []
+
+    for segment in segments:
+        if not segment.words:
+            result.append(segment)
+            continue
+        visible = visible_text(segment.final_text())
+        if len(visible) <= hard_limit and (segment.end - segment.start) <= style.max_duration_sec:
+            result.append(segment)
+            continue
+
+        groups: list[list] = []
+        current: list[Any] = []
+        current_len = 0
+        for word in segment.words:
+            word_len = len(visible_text(word.text))
+            prospective = current_len + (1 if current else 0) + word_len
+            if current and prospective > hard_limit:
+                groups.append(current)
+                current = [word]
+                current_len = word_len
+            else:
+                current.append(word)
+                current_len = prospective
+        if current:
+            groups.append(current)
+
+        # Do not leave a very short last fragment; merge it into the previous group.
+        if len(groups) > 1:
+            last_len = sum(len(visible_text(word.text)) for word in groups[-1]) + (len(groups[-1]) - 1)
+            if last_len < max(12, style.min_gap_sec and 8) and len(groups[-2]) + len(groups[-1]) > 0:
+                words_joined = groups[-2] + groups[-1]
+                # A triple-line group is still acceptable if the full speech is short.
+                joined_visible = sum(len(visible_text(word.text)) for word in words_joined) + (len(words_joined) - 1)
+                if joined_visible <= hard_limit * 1.5:
+                    groups = groups[:-2] + [words_joined]
+
+        for group in groups:
+            if not group:
+                continue
+            result.append(
+                Segment(
+                    id=segment.id,
+                    start=float(group[0].start),
+                    end=float(group[-1].end),
+                    speaker_id=segment.speaker_id,
+                    text_raw=" ".join(word.text.strip() for word in group).strip(),
+                    words=list(group),
+                    speaker_name_candidate=segment.speaker_name_candidate,
+                    speaker_identity_confidence=segment.speaker_identity_confidence,
+                    diarization_confidence=segment.diarization_confidence,
+                    overlap_speakers=list(segment.overlap_speakers),
+                    character_candidate=segment.character_candidate,
+                    actor_candidate=segment.actor_candidate,
+                    ocr_hits=list(segment.ocr_hits),
+                    imdb_candidates=list(segment.imdb_candidates),
+                    vision_candidates=list(segment.vision_candidates),
+                    events=list(segment.events),
+                    music=segment.music,
+                    decision=None,
+                    text_corrected=None,
+                )
+            )
+
+    for index, segment in enumerate(result, start=1):
+        segment.id = index
+    return result
