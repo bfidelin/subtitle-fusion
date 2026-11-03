@@ -101,8 +101,8 @@ def ingest_transcript(
             from src.pyannote_gpu_provider import (
                 PyannoteGpuConfig,
                 PyannoteGpuUnavailableError,
-                assign_speakers,
                 run_pyannote_diarization,
+                segment_by_pyannote_turns,
             )
 
             try:
@@ -118,7 +118,7 @@ def ingest_transcript(
                 )
                 for turn in turns
             ]
-            assign_speakers(segments, turns)
+            segments = segment_by_pyannote_turns(segments, turns)
             if embeddings:
                 speaker_embeddings = embeddings
         return segments, speaker_turns, speaker_embeddings, language
