@@ -249,7 +249,7 @@ def run_pipeline(
 
                     index = JellyfinPeopleIndex.from_paths()
                     if index.rows:
-                        attach_jellyfin_candidates(segments, ocr_hits, index)
+                        attach_jellyfin_candidates(segments, ocr_hits, index, min_occurrences=6)
                         meta["jellyfin_people"] = {
                             "rows": len(index.rows),
                             "candidates": sum(
