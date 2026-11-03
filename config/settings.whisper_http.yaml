@@ -1,0 +1,79 @@
+pipeline:
+  enable_media_preflight: true
+  reuse_embedded_subtitles: false
+  prefer_text_subtitle_track: true
+  prefer_pgs_event_ocr_before_video_ocr: true
+  enable_ocr: true
+  enable_imdb: true
+  enable_vision: false
+  enable_sdh: true
+  write_debug_json: true
+
+providers:
+  asr: whisper_http
+  diarization: whisper_http
+  ocr: sparse
+  imdb: local_tsv
+  vision: stub
+
+whisperx:
+  model: large-v3-turbo
+  device: auto
+  compute_type: float16
+  batch_size: 16
+  language: null
+  vad_method: pyannote
+  align: true
+  diarize: true
+  diarization_model: pyannote/speaker-diarization-community-1
+  hf_token_env: HF_TOKEN
+  min_speakers: null
+  max_speakers: null
+  return_embeddings: true
+  cache_dir: null
+  fill_nearest_speaker: false
+
+ocr:
+  detector_candidates:
+    - pp-ocrv5-mobile-det
+    - pp-ocrv6-tiny-det
+    - openvino-horizontal-text-detection-0001
+  periodic_fps: 0.5
+  active_text_fps_min: 2.0
+  active_text_fps_max: 5.0
+  use_shot_boundaries: true
+  track_boxes: true
+  perceptual_hash_cache: true
+  recognize_only_changed_crops: true
+
+voiceprints:
+  enabled: true
+  min_score: 0.78
+  min_margin: 0.04
+  max_samples_per_character: 12
+  store_dir: data/voiceprints
+
+performance:
+  write_benchmark_json: true
+  benchmark_path_name: output.benchmark.json
+  cache_media_evidence: true
+  cache_by_media_and_config_hash: true
+
+paths:
+  imdb_dir: data/imdb
+  cache_dir: data/cache
+  work_dir: data/work
+
+
+whisper_http:
+  url: http://127.0.0.1:9000/asr
+  language: null
+  engine: faster_whisper
+  encode: true
+  task: transcribe
+  vad_filter: true
+  word_timestamps: true
+  output: json
+  diarize: true
+  diarize_threshold: 0.8
+  timeout_sec: 720

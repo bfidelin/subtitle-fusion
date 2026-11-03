@@ -6,10 +6,10 @@ from pathlib import Path
 import yaml
 
 from src.exporters import export_ass, export_compliance_report, export_json, export_srt
-from src.fusion import resolve_segment
+from src.fusion import attach_nearby_ocr, resolve_segment
 from src.imdb_index import IMDbIndex
 from src.media_preflight import MediaPreflightError, probe_media
-from src.models import MediaContext, PipelineResult, Segment, SpeakerTurn, Word
+from src.models import Candidate, MediaContext, PipelineResult, Segment, SpeakerTurn, Word
 from src.netflix_style import NetflixStyle, apply_netflix_style, validate_result
 from src.scoring import load_scoring_config, segment_needs_review
 from src.voiceprints import VoiceprintStore, series_key
@@ -60,13 +60,43 @@ def ingest_transcript(
     provider = settings.get("providers", {}).get("asr", "stub")
     if provider == "stub":
         return build_stub_segments(), [], {}, None
+
+    # Prefer an embedded text subtitle when the selected pipeline asks for reuse
+    # and the media actually contains a usable track. This gives human-quality
+    # timing and wording before any ASR path runs.
+    if settings.get("pipeline", {}).get("reuse_embedded_subtitles", False) or provider in {
+        "embedded",
+        "embedded_subtitle",
+        "embedded_subtitles",
+    }:
+        from src.embedded_subtitle_provider import (
+            EmbeddedSubtitleConfig,
+            EmbeddedSubtitleProvider,
+            EmbeddedSubtitleUnavailableError,
+        )
+
+        try:
+            cfg = EmbeddedSubtitleConfig.from_mapping(settings.get("embedded_subtitles"))
+            run = EmbeddedSubtitleProvider(cfg).transcribe(video_path)
+            return run.segments, run.speaker_turns, run.speaker_embeddings, run.language
+        except EmbeddedSubtitleUnavailableError:
+            if provider in {"embedded", "embedded_subtitle", "embedded_subtitles"}:
+                raise ValueError("No embedded text subtitle stream available")
+
+    if provider in {"whisper_http", "remote_whisper", "http_whisper"}:
+        from src.whisper_http_provider import WhisperHttpConfig, WhisperHttpProvider
+
+        cfg = WhisperHttpConfig.from_mapping(settings.get("whisper_http"))
+        diarization_provider = settings.get("providers", {}).get("diarization")
+        if diarization_provider in {"none", "disabled", None}:
+            cfg.diarize = False
+        run = WhisperHttpProvider(cfg).transcribe(video_path)
+        return run.segments, run.speaker_turns, run.speaker_embeddings, run.language
     if provider != "whisperx":
         raise ValueError(f"Unsupported ASR provider: {provider!r}")
 
     whisperx_cfg = WhisperXConfig.from_mapping(settings.get("whisperx"))
-    diarization_provider = settings.get("providers", {}).get(
-        "diarization", "whisperx_pyannote"
-    )
+    diarization_provider = settings.get("providers", {}).get("diarization", "whisperx_pyannote")
     if diarization_provider in {"none", "disabled", None}:
         whisperx_cfg = WhisperXConfig.from_mapping(
             {**settings.get("whisperx", {}), "diarize": False}
@@ -157,18 +187,70 @@ def run_pipeline(
                 "format_name": inventory.format_name,
                 "duration_sec": inventory.duration_sec,
                 "streams": [asdict(stream) for stream in inventory.streams],
-                "text_subtitle_streams": [stream.index for stream in inventory.text_subtitle_streams],
-                "image_subtitle_streams": [stream.index for stream in inventory.image_subtitle_streams],
+                "text_subtitle_streams": [
+                    stream.index for stream in inventory.text_subtitle_streams
+                ],
+                "image_subtitle_streams": [
+                    stream.index for stream in inventory.image_subtitle_streams
+                ],
             }
         except (MediaPreflightError, OSError, ValueError) as exc:
             # Preflight is an optimization/evidence stage; failure must not hide a
             # usable ASR path. Record it for diagnosis and continue.
             meta["media_preflight"] = {"error": str(exc)}
 
-    segments, speaker_turns, speaker_embeddings, language = ingest_transcript(
-        video_path,
-        settings,
-    )
+    from concurrent.futures import ThreadPoolExecutor
+
+    enable_ocr = bool(settings.get("pipeline", {}).get("enable_ocr", True))
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        asr_future = executor.submit(ingest_transcript, video_path, settings)
+        if enable_ocr:
+            try:
+                from src.fast_ocr import FastOcrConfig, collect_sparse_ocr
+
+                ocr_future = executor.submit(
+                    collect_sparse_ocr,
+                    video_path,
+                    FastOcrConfig.from_mapping(settings.get("ocr")),
+                )
+            except Exception:
+                ocr_future = None
+        else:
+            ocr_future = None
+
+        segments, speaker_turns, speaker_embeddings, language = asr_future.result()
+
+        if ocr_future is not None:
+            try:
+                ocr_hits = ocr_future.result()
+            except Exception as exc:
+                meta["ocr"] = {"error": str(exc)}
+                ocr_hits = []
+            else:
+                for segment in segments:
+                    attach_nearby_ocr(segment, ocr_hits)
+                    seen = {str(c.name).lower() for c in segment.imdb_candidates}
+                    for hit in segment.ocr_hits:
+                        if hit.text.lower() in seen:
+                            continue
+                        seen.add(hit.text.lower())
+                        segment.imdb_candidates.append(
+                            Candidate(
+                                type="ocr",
+                                name=hit.text,
+                                score=0.0,
+                                meta={"ocr_time": hit.time, "ocr_confidence": hit.confidence},
+                            )
+                        )
+                meta["ocr"] = {
+                    "hits": len(ocr_hits),
+                    "unique_texts": len({hit.text for hit in ocr_hits}),
+                    "sparse": True,
+                }
+        else:
+            if enable_ocr:
+                meta["ocr"] = {"error": "OCR future was not scheduled"}
+
     meta["voiceprints"] = apply_voiceprints(
         segments,
         speaker_embeddings,
@@ -178,10 +260,9 @@ def run_pipeline(
     )
 
     if media.imdb_title_id:
-        title_candidates = (
-            imdb.get_characters_for_title(media.imdb_title_id)
-            + imdb.get_people_for_title(media.imdb_title_id)
-        )
+        title_candidates = imdb.get_characters_for_title(
+            media.imdb_title_id
+        ) + imdb.get_people_for_title(media.imdb_title_id)
         for seg in segments:
             seg.imdb_candidates = title_candidates
 
