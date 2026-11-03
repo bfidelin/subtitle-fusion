@@ -73,7 +73,12 @@ def normalize_http_segments(raw_segments: Any) -> list[Segment]:
             # Context review helper: capitalised tokens (other than first word of a cue)
             # are often proper-noun risk candidate. ASR text is chanted lower-case in
             # subsequent positions, so this stays conservative but useful for review.
-            if index > 0 and len(word_text) >= 3 and word_text[:1].isupper() and word_text[1:].islower():
+            if (
+                index > 0
+                and len(word_text) >= 3
+                and word_text[:1].isupper()
+                and word_text[1:].islower()
+            ):
                 flags.append("proper_noun_candidate")
             words.append(
                 Word(

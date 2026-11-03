@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from pathlib import Path
 
+import re
 import yaml
 
 from src.exporters import export_ass, export_compliance_report, export_json, export_srt
@@ -242,6 +243,25 @@ def run_pipeline(
                                 meta={"ocr_time": hit.time, "ocr_confidence": hit.confidence},
                             )
                         )
+                # Optional Jellyfin people candidates from matches against OCR text.
+                try:
+                    from src.jellyfin_people import JellyfinPeopleIndex, attach_jellyfin_candidates
+
+                    index = JellyfinPeopleIndex.from_paths()
+                    if index.rows:
+                        attach_jellyfin_candidates(segments, ocr_hits, index)
+                        meta["jellyfin_people"] = {
+                            "rows": len(index.rows),
+                            "candidates": sum(
+                                1
+                                for s in segments
+                                for c in s.imdb_candidates
+                                if getattr(c, "type", "") == "jellyfin_person"
+                            ),
+                        }
+                except Exception as exc:
+                    meta["jellyfin_people"] = {"error": str(exc)}
+
                 meta["ocr"] = {
                     "hits": len(ocr_hits),
                     "unique_texts": len({hit.text for hit in ocr_hits}),
@@ -250,6 +270,32 @@ def run_pipeline(
         else:
             if enable_ocr:
                 meta["ocr"] = {"error": "OCR future was not scheduled"}
+
+    # Add Jellyfin identity candidates even when an episode has no OCR hits.
+    try:
+        from src.jellyfin_people import JellyfinPeopleIndex, attach_jellyfin_candidates
+        jellyfin_index = JellyfinPeopleIndex.from_paths()
+        if jellyfin_index.rows:
+            for segment in segments:
+                words = __import__("re").findall(r"\b[A-Z][A-Za-z]{2,}\b", getattr(segment, "text_raw", "") or "")
+                hits = getattr(segment, "ocr_hits", []) or []
+                candidates = set(words)
+                for hit in hits:
+                    for token in re.findall(r"\b[A-Z][a-z]{2,}\b", str(getattr(hit, "text", "") or "")):
+                        candidates.add(token)
+                jellyfin_candidates = jellyfin_index.candidates_for_tokens(list(candidates))
+                seen = {str(getattr(c, "name", "")).lower() for c in segment.imdb_candidates}
+                for candidate in jellyfin_candidates:
+                    if candidate.name.lower() not in seen:
+                        segment.imdb_candidates.append(candidate)
+                        seen.add(candidate.name.lower())
+            meta["jellyfin_people"] = {
+                "rows": len(jellyfin_index.rows),
+                "candidates": sum(1 for s in segments for c in s.imdb_candidates if getattr(c, "type", "") == "jellyfin_person"),
+            }
+    except Exception as exc:
+        if "jellyfin_people" not in meta:
+            meta["jellyfin_people"] = {"error": str(exc)}
 
     meta["voiceprints"] = apply_voiceprints(
         segments,
