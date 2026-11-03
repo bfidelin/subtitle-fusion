@@ -303,14 +303,19 @@ def run_pipeline(
     # Add Jellyfin identity candidates even when an episode has no OCR hits.
     try:
         from src.jellyfin_people import JellyfinPeopleIndex, attach_jellyfin_candidates
+
         jellyfin_index = JellyfinPeopleIndex.from_paths()
         if jellyfin_index.rows:
             for segment in segments:
-                words = __import__("re").findall(r"\b[A-Z][A-Za-z]{2,}\b", getattr(segment, "text_raw", "") or "")
+                words = __import__("re").findall(
+                    r"\b[A-Z][A-Za-z]{2,}\b", getattr(segment, "text_raw", "") or ""
+                )
                 hits = getattr(segment, "ocr_hits", []) or []
                 candidates = set(words)
                 for hit in hits:
-                    for token in re.findall(r"\b[A-Z][a-z]{2,}\b", str(getattr(hit, "text", "") or "")):
+                    for token in re.findall(
+                        r"\b[A-Z][a-z]{2,}\b", str(getattr(hit, "text", "") or "")
+                    ):
                         candidates.add(token)
                 jellyfin_candidates = jellyfin_index.candidates_for_tokens(list(candidates))
                 seen = {str(getattr(c, "name", "")).lower() for c in segment.imdb_candidates}
@@ -320,7 +325,12 @@ def run_pipeline(
                         seen.add(candidate.name.lower())
             meta["jellyfin_people"] = {
                 "rows": len(jellyfin_index.rows),
-                "candidates": sum(1 for s in segments for c in s.imdb_candidates if getattr(c, "type", "") == "jellyfin_person"),
+                "candidates": sum(
+                    1
+                    for s in segments
+                    for c in s.imdb_candidates
+                    if getattr(c, "type", "") == "jellyfin_person"
+                ),
             }
     except Exception as exc:
         if "jellyfin_people" not in meta:
