@@ -89,10 +89,39 @@ def ingest_transcript(
 
         cfg = WhisperHttpConfig.from_mapping(settings.get("whisper_http"))
         diarization_provider = settings.get("providers", {}).get("diarization")
-        if diarization_provider in {"none", "disabled", None}:
+        if diarization_provider in {"none", "disabled", None, "pyannote_gpu"}:
             cfg.diarize = False
         run = WhisperHttpProvider(cfg).transcribe(video_path)
-        return run.segments, run.speaker_turns, run.speaker_embeddings, run.language
+        segments = run.segments
+        speaker_turns = run.speaker_turns
+        speaker_embeddings = run.speaker_embeddings
+        language = run.language
+
+        if diarization_provider == "pyannote_gpu":
+            from src.pyannote_gpu_provider import (
+                PyannoteGpuConfig,
+                PyannoteGpuUnavailableError,
+                assign_speakers,
+                run_pyannote_diarization,
+            )
+
+            try:
+                pya_cfg = PyannoteGpuConfig.from_mapping(settings.get("pyannote_gpu"))
+                turns, embeddings = run_pyannote_diarization(video_path, pya_cfg)
+            except PyannoteGpuUnavailableError as exc:
+                raise ValueError(str(exc)) from exc
+            speaker_turns = [
+                SpeakerTurn(
+                    start=float(turn.get("start", 0.0)),
+                    end=float(turn.get("end", 0.0)),
+                    speaker_id=str(turn.get("speaker", "UNKNOWN")),
+                )
+                for turn in turns
+            ]
+            assign_speakers(segments, turns)
+            if embeddings:
+                speaker_embeddings = embeddings
+        return segments, speaker_turns, speaker_embeddings, language
     if provider != "whisperx":
         raise ValueError(f"Unsupported ASR provider: {provider!r}")
 
