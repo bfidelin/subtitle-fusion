@@ -5,7 +5,7 @@ from src.scoring import ScoringConfig, lexical_similarity
 
 
 def attach_nearby_ocr(segment: Segment, ocr_hits: list) -> Segment:
-    segment.ocr_hits = [hit for hit in ocr_hits if segment.start - 1.0 <= hit.time <= segment.end + 1.0]
+    segment.ocr_hits = [hit for hit in ocr_hits if hit.time >= segment.start - 2.5 and hit.time <= segment.end + 2.5]
     return segment
 
 
