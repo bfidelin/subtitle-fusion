@@ -22,7 +22,9 @@ def test_config_from_mapping_filters_unknown_keys() -> None:
     assert config.min_speakers == 2
 
 
-def test_run_pyannote_diarization_parses_subprocess_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_pyannote_diarization_parses_subprocess_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     audio = tmp_path / "episode.mkv"
     audio.write_bytes(b"fake media")
     python_path = tmp_path / "python"
@@ -71,7 +73,16 @@ def test_assign_speakers_and_segment_joining() -> None:
         Word(text="on", start=0.5, end=0.8),
         Word(text="Hello", start=1.0, end=1.2),
     ]
-    segments = [Segment(id=1, start=0.0, end=1.2, speaker_id="UNKNOWN", text_raw="Previously on Hello", words=words)]
+    segments = [
+        Segment(
+            id=1,
+            start=0.0,
+            end=1.2,
+            speaker_id="UNKNOWN",
+            text_raw="Previously on Hello",
+            words=words,
+        )
+    ]
     turns = [
         {"start": 0.0, "end": 0.85, "speaker": "Speaker_1"},
         {"start": 0.85, "end": 1.3, "speaker": "Speaker_2"},
@@ -79,6 +90,7 @@ def test_assign_speakers_and_segment_joining() -> None:
 
     assign_speakers(segments, turns)
     assert segments[0].speaker_id == "Speaker_1"
+
 
 # Segment 0: The exact shared helper now lives in src/pyannote_gpu_provider together
 # with the actual output; whitespace mirrors mapping turns above.
@@ -113,7 +125,9 @@ def test_segment_by_pyannote_turns_basic() -> None:
         Word(text="on", start=0.3, end=0.8),
         Word(text="Hello", start=1.0, end=1.2),
     ]
-    segment = Segment(id=1, start=0.0, end=1.2, speaker_id="UNKNOWN", text_raw="Previously on Hello", words=words)
+    segment = Segment(
+        id=1, start=0.0, end=1.2, speaker_id="UNKNOWN", text_raw="Previously on Hello", words=words
+    )
     turns = [
         {"start": 0.0, "end": 0.85, "speaker": "Speaker_1"},
         {"start": 0.85, "end": 1.3, "speaker": "Speaker_2"},

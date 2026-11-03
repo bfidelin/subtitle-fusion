@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 
 for dotenv in ("/home/calmos/.env", "/home/calmos/subtitle-fusion/.env"):
@@ -41,7 +40,8 @@ def main() -> int:
 
     audio_path = args.audio
     if not str(audio_path).lower().endswith(".wav"):
-        import subprocess, tempfile
+        import subprocess
+        import tempfile
         wav_path = Path(tempfile.mkdtemp()) / "input.wav"
         cp = subprocess.run(
             ["ffmpeg", "-y", "-nostdin", "-i", str(audio_path), "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path)],
