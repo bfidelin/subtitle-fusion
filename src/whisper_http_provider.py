@@ -40,7 +40,7 @@ def normalize_http_segments(raw_segments: Any) -> list[Segment]:
     """Normalize the JSON response returned by the local Whisper ASR API."""
     segments: list[Segment] = []
     if not isinstance(raw_segments, list):
-        return segments
+        return _merge_adjacent_same_speaker(segments)
 
     for index, raw in enumerate(raw_segments, start=1):
         if not isinstance(raw, Mapping):
@@ -106,7 +106,7 @@ def normalize_http_segments(raw_segments: Any) -> list[Segment]:
                 words=words,
             )
         )
-    return segments
+    return _coalesce_http_segments(segments)
 
 
 @dataclass(slots=True)
@@ -255,3 +255,58 @@ class WhisperHttpResult:
     speaker_turns: list["SpeakerTurn"]
     speaker_embeddings: dict[str, list[float]]
     language: str | None = None
+
+
+def _coalesce_http_segments(segments: list[Segment]) -> list[Segment]:
+    # Merge only tiny neighbouring cues into a single readable 42-char cue.
+    # This is conservative: no punctuation over 42 characters are swallowed.
+    merged: list[Segment] = []
+    for segment in segments:
+        if not merged:
+            merged.append(segment)
+            continue
+        previous = merged[-1]
+        total = len(previous.text_raw) + 1 + len(segment.text_raw)
+        if (
+            (len(previous.words) <= 3 or previous.end - previous.start < 0.6)
+            and total <= 42
+            and float(segment.start) - float(previous.end) <= 0.5
+            and len(previous.words) + len(segment.words) <= 6
+        ):
+            previous.end = max(float(previous.end), float(segment.end))
+            previous.text_raw = f"{previous.text_raw} {segment.text_raw}".strip()
+            previous.words.extend(segment.words)
+            previous.speaker_id = (
+                previous.speaker_id
+                if previous.speaker_id == segment.speaker_id
+                else previous.speaker_id
+            )
+        else:
+            merged.append(segment)
+    for index, segment in enumerate(merged, start=1):
+        segment.id = index
+    return merged
+
+
+def _merge_adjacent_same_speaker(segments: list[Segment]) -> list[Segment]:
+    merged: list[Segment] = []
+    for segment in segments:
+        if not merged:
+            merged.append(segment)
+            continue
+        previous = merged[-1]
+        gap = float(segment.start) - float(previous.end)
+        combined = len(previous.text_raw) + 1 + len(segment.text_raw)
+        previous_short = len(previous.words) <= 4 and len(previous.text_raw) <= 20
+
+        # Only join truly tiny fragments from the same speaker. This avoids merging
+ # an unrelated sentence boundary.
+        if previous.speaker_id == segment.speaker_id and gap <= 0.5 and previous_short and combined <= 84 and len(segment.words) <= 10:
+            previous.end = max(float(previous.end), float(segment.end))
+            previous.text_raw = f"{previous.text_raw} {segment.text_raw}".strip()
+            previous.words.extend(segment.words)
+        else:
+            merged.append(segment)
+    for index, segment in enumerate(merged, start=1):
+        segment.id = index
+    return merged
