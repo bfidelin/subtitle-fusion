@@ -142,7 +142,8 @@ def _split_score(tokens: list[str], index: int) -> float:
     if _clean_token(left_tokens[-1]) in _FRENCH_ARTICLES:
         score += 20
     if _looks_like_name_boundary(left_tokens[-1], right_tokens[0]):
-        score += 15
+        pass
+        # score += 80  (disabled: do not penalise a break between adjacent proper words)
     return score
 
 
@@ -322,7 +323,7 @@ def apply_netflix_segmentation(segments: list[Segment], style: NetflixStyle) -> 
     consecutive words into two-to-line-safe cues while preserving every word and
     its original word-level timing. It does not paraphrase.
     """
-    hard_limit = style.max_chars_per_line
+    hard_limit = style.max_chars_per_line * style.max_lines
     result: list[Segment] = []
 
     for segment in segments:
