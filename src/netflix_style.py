@@ -322,7 +322,7 @@ def apply_netflix_segmentation(segments: list[Segment], style: NetflixStyle) -> 
     consecutive words into two-to-line-safe cues while preserving every word and
     its original word-level timing. It does not paraphrase.
     """
-    hard_limit = style.max_chars_per_line * style.max_lines
+    hard_limit = style.max_chars_per_line
     result: list[Segment] = []
 
     for segment in segments:
@@ -353,7 +353,7 @@ def apply_netflix_segmentation(segments: list[Segment], style: NetflixStyle) -> 
         # Do not leave a very short last fragment; merge it into the previous group.
         if len(groups) > 1:
             last_len = sum(len(visible_text(word.text)) for word in groups[-1]) + (len(groups[-1]) - 1)
-            if last_len < max(12, style.min_gap_sec and 8) and len(groups[-2]) + len(groups[-1]) > 0:
+            if last_len < 6 and len(groups[-2]) + len(groups[-1]) > 0:
                 words_joined = groups[-2] + groups[-1]
                 # A triple-line group is still acceptable if the full speech is short.
                 joined_visible = sum(len(visible_text(word.text)) for word in words_joined) + (len(words_joined) - 1)
