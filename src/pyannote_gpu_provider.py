@@ -100,6 +100,10 @@ def segment_by_pyannote_turns(segments, turns):
             if overlap > best_overlap:
                 best_overlap = overlap
                 best = str(turn.get("speaker", "UNKNOWN"))
+        for turn in ordered:
+            boundary = float(turn.get("start", 0.0))
+            if start + 0.05 < boundary < end - 0.05:
+                return str(turn.get("speaker", "UNKNOWN"))
         if best != "UNKNOWN":
             return best
         best = "UNKNOWN"
