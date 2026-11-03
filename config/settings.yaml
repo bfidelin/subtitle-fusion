@@ -1,6 +1,6 @@
 pipeline:
   enable_media_preflight: true
-  reuse_embedded_subtitles: true
+  reuse_embedded_subtitles: false
   prefer_text_subtitle_track: true
   prefer_pgs_event_ocr_before_video_ocr: true
   enable_ocr: true
