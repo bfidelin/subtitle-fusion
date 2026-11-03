@@ -39,7 +39,11 @@ class JellyfinPeopleIndex:
     def from_paths(cls, paths=None):
         rows = []
         if paths is None:
-            paths = sorted(Path("data/people").glob("*_people.tsv")) if Path("data/people").is_dir() else []
+            paths = (
+                sorted(Path("data/people").glob("*_people.tsv"))
+                if Path("data/people").is_dir()
+                else []
+            )
         elif isinstance(paths, (str, Path)):
             p = Path(paths)
             if p.is_dir():
@@ -90,7 +94,12 @@ class JellyfinPeopleIndex:
                     type="jellyfin_person",
                     name=name,
                     score=0.0,
-                    meta={"role": row.get("role"), "type": row.get("type"), "image": f"{row.get('image_url','')}", "occurrences": counts[name]},
+                    meta={
+                        "role": row.get("role"),
+                        "type": row.get("type"),
+                        "image": f"{row.get('image_url', '')}",
+                        "occurrences": counts[name],
+                    },
                 )
             )
         return out
@@ -111,10 +120,14 @@ class JellyfinPeopleIndex:
 
     def candidates_for_ocr(self, hits, min_confidence: float = 0.7, min_occurrences: int = 2):
         usable = [h for h in hits if float(getattr(h, "confidence", 1.0) or 0.0) >= min_confidence]
-        return self.candidates_for_tokens(self.tokens_from_ocr(usable), min_occurrences=min_occurrences)
+        return self.candidates_for_tokens(
+            self.tokens_from_ocr(usable), min_occurrences=min_occurrences
+        )
 
 
-def attach_jellyfin_candidates(segments: list, hits: list, index: JellyfinPeopleIndex, min_confidence: float = 0.7):
+def attach_jellyfin_candidates(
+    segments: list, hits: list, index: JellyfinPeopleIndex, min_confidence: float = 0.7
+):
     for segment in segments:
         nearby = getattr(segment, "ocr_hits", []) or hits
         candidates = index.candidates_for_ocr(nearby, min_confidence=min_confidence)
