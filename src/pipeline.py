@@ -250,6 +250,19 @@ def run_pipeline(
 
         segments, speaker_turns, speaker_embeddings, language = asr_future.result()
 
+    # Configurable ASR context-term corrections are opt-in and data-driven.
+    # Defaults are empty; populate from OCR/Jellyfin/IMDb/Sonarr evidence.
+    context_terms = settings.get("context_terms", {}) or {}
+    if isinstance(context_terms, dict):
+        for segment in segments:
+            corrected = segment.text_raw
+            for bad, good in context_terms.items():
+                if isinstance(bad, str) and isinstance(good, str) and bad.strip():
+                    corrected = re.sub(re.escape(bad), good, corrected, flags=re.IGNORECASE)
+            if corrected != segment.text_raw:
+                segment.text_raw = corrected
+                segment.text_corrected = corrected
+
         if ocr_future is not None:
             try:
                 ocr_hits = ocr_future.result()
@@ -368,6 +381,33 @@ def run_pipeline(
             seg.text_corrected = seg.decision.final_text
         else:
             seg.text_corrected = seg.text_raw
+
+    review_cfg = settings.get("llm_review", {})
+    if review_cfg.get("enabled", False):
+        try:
+            from src.ollama_review import OllamaReviewConfig, review_text
+
+            cfg = OllamaReviewConfig.from_mapping(review_cfg)
+            raw_texts = [segment.text_raw for segment in segments]
+            reviewed = 0
+            accepted = 0
+            for index, segment in enumerate(segments):
+                if not segment_needs_review(segment, scoring_cfg):
+                    continue
+                candidate_names = sorted({candidate.name for candidate in getattr(segment, "imdb_candidates", [])})
+                context = raw_texts[max(0, index - 2):] if False else raw_texts[max(0, index - 2):index] + raw_texts[index + 1:index + 3]
+                try:
+                    final, changed, reason = review_text(segment.final_text(), candidate_names, context, cfg)
+                except Exception as exc:
+                    meta["llm_review_warning"] = str(exc)
+                    continue
+                reviewed += 1
+                if changed:
+                    accepted += 1
+                    segment.text_corrected = final
+            meta["llm_review"] = {"enabled": True, "reviewed": reviewed, "accepted": accepted, "model": cfg.model}
+        except Exception as exc:
+            meta["llm_review"] = {"enabled": True, "error": str(exc)}
 
     netflix_issues = []
     netflix_cfg = style_cfg.get("netflix", {})
