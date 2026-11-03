@@ -55,7 +55,7 @@ def normalize_http_segments(raw_segments: Any) -> list[Segment]:
         speaker_id = _speaker_id(raw.get("speaker"))
         text_raw = _as_text(raw.get("text"))
         words: list[Word] = []
-        for raw_word in raw.get("words", []) or []:
+        for index, raw_word in enumerate(raw.get("words", []) or []):
             if not isinstance(raw_word, Mapping):
                 continue
             word_start = _as_float(raw_word.get("start"))
@@ -68,12 +68,25 @@ def normalize_http_segments(raw_segments: Any) -> list[Segment]:
             confidence = _as_float(
                 raw_word.get("confidence", raw_word.get("score", raw_word.get("probability")))
             )
+            flags: list[str] = []
+            word_text = _as_text(raw_word.get("text", raw_word.get("word")))
+            # Context review helper: capitalised tokens (other than first word of a cue)
+            # are often proper-noun risk candidate. ASR text is chanted lower-case in
+            # subsequent positions, so this stays conservative but useful for review.
+            if (
+                index > 0
+                and len(word_text) >= 3
+                and word_text[:1].isupper()
+                and word_text[1:].islower()
+            ):
+                flags.append("proper_noun_candidate")
             words.append(
                 Word(
-                    text=_as_text(raw_word.get("text", raw_word.get("word"))),
+                    text=word_text,
                     start=word_start,
                     end=word_end,
                     confidence=confidence,
+                    flags=flags,
                     speaker_id=_speaker_id(word_speaker)
                     if word_speaker is not None
                     else speaker_id,

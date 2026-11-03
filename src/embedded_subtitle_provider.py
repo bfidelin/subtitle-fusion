@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from src.models import Segment
+from src.models import Segment, SpeakerTurn
 
 
 TEXT_SUBTITLE_CODECS = {
@@ -178,8 +178,6 @@ class EmbeddedSubtitleProvider:
         language = str(stream.get("tags", {}).get("language") or "").strip() or self.config.language
         if not language:
             language = None
-
-        from src.models import SpeakerTurn
 
         return EmbeddedSubtitleResult(
             segments=segments,
