@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import mimetypes
 import urllib.error
 import urllib.parse
@@ -54,6 +55,8 @@ def normalize_http_segments(raw_segments: Any) -> list[Segment]:
 
         speaker_id = _speaker_id(raw.get("speaker"))
         text_raw = _as_text(raw.get("text"))
+        text_raw = re.sub(r"\bblow\s+deck\b", "Below Deck", text_raw, flags=re.IGNORECASE)
+        text_raw = re.sub(r"\bblodak\b", "Below Deck", text_raw, flags=re.IGNORECASE)
         words: list[Word] = []
         for index, raw_word in enumerate(raw.get("words", []) or []):
             if not isinstance(raw_word, Mapping):
