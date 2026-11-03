@@ -123,10 +123,10 @@ def ingest_transcript(
                 speaker_embeddings = embeddings
 
         if diarization_provider == "senko_gpu":
+            from src.pyannote_gpu_provider import segment_by_pyannote_turns
             from src.senko_gpu_provider import (
                 SenkoGpuConfig,
                 SenkoGpuUnavailableError,
-                assign_speakers,
                 run_senko_diarization,
             )
 
@@ -143,7 +143,7 @@ def ingest_transcript(
                 )
                 for turn in turns
             ]
-            assign_speakers(segments, turns)
+            segments = segment_by_pyannote_turns(segments, turns)
             if embeddings:
                 speaker_embeddings = embeddings
 
