@@ -72,18 +72,27 @@ class JellyfinPeopleIndex:
                 return row
         return None
 
-    def candidates_for_tokens(self, tokens: list[str]):
-        out = []
-        seen = set()
+    def candidates_for_tokens(self, tokens: list[str], min_occurrences: int = 1):
+        out: list[Candidate] = []
+        seen: set[str] = set()
+        counts: dict[str, int] = {}
         for token in tokens:
             row = self._match(token)
             if not row or not row.get("name"):
                 continue
             name = row.get("name", "").strip()
-            if name.lower() in seen:
+            counts[name] = counts.get(name, 0) + 1
+            if counts[name] < min_occurrences or name.lower() in seen:
                 continue
             seen.add(name.lower())
-            out.append(Candidate(type="jellyfin_person", name=name, score=0.0, meta={"role": row.get("role"), "type": row.get("type"), "image": f"{row.get('image_url','')}"}))
+            out.append(
+                Candidate(
+                    type="jellyfin_person",
+                    name=name,
+                    score=0.0,
+                    meta={"role": row.get("role"), "type": row.get("type"), "image": f"{row.get('image_url','')}", "occurrences": counts[name]},
+                )
+            )
         return out
 
     def tokens_from_ocr(self, hits) -> list[str]:
@@ -100,9 +109,9 @@ class JellyfinPeopleIndex:
                         tokens.append(cap)
         return tokens
 
-    def candidates_for_ocr(self, hits, min_confidence: float = 0.7):
+    def candidates_for_ocr(self, hits, min_confidence: float = 0.7, min_occurrences: int = 2):
         usable = [h for h in hits if float(getattr(h, "confidence", 1.0) or 0.0) >= min_confidence]
-        return self.candidates_for_tokens(self.tokens_from_ocr(usable))
+        return self.candidates_for_tokens(self.tokens_from_ocr(usable), min_occurrences=min_occurrences)
 
 
 def attach_jellyfin_candidates(segments: list, hits: list, index: JellyfinPeopleIndex, min_confidence: float = 0.7):
