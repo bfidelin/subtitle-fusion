@@ -276,6 +276,54 @@ def run_pipeline(
 
         segments, speaker_turns, speaker_embeddings, language = asr_future.result()
 
+    # Apply trained phrase/cue resegmentation (optional, deterministic).
+    if settings.get("pipeline", {}).get("enable_phrase_segmentation", True):
+        try:
+            from src.phrase_segmentation import segment_words
+
+            flattened = []
+            for seg in segments:
+                if getattr(seg, "words", None):
+                    for word in seg.words:
+                        flattened.append({
+                            "text": str(getattr(word, "text", "")),
+                            "start": float(getattr(word, "start", seg.start)),
+                            "end": float(getattr(word, "end", seg.end)),
+                            "speaker_id": (str(getattr(word, "speaker_id", None)) if str(getattr(word, "speaker_id", None)) not in ("", "UNKNOWN") else str(seg.speaker_id)),
+                            "confidence": getattr(word, "confidence", None),
+                        })
+                else:
+                    flattened.append({
+                        "text": seg.text_raw, "start": seg.start, "end": seg.end,
+                        "speaker_id": seg.speaker_id,
+                    })
+            phrase_cues = segment_words(flattened)
+            # Rebuild model segments while preserving only stable fields.
+            seg_type = type(segments[0]) if segments else None
+            if seg_type is not None:
+                segments = []
+                for cue in phrase_cues:
+                    cue_words = []
+                    from src.models import Word
+                    for word_rec in cue.words:
+                        cue_words.append(Word(
+                            text=str(word_rec.get("text", "")),
+                            start=float(word_rec.get("start", cue.start)),
+                            end=float(word_rec.get("end", cue.end)),
+                            confidence=word_rec.get("confidence"),
+                            speaker_id=str(word_rec.get("speaker_id", cue.speaker_id)),
+                        ))
+                    segments.append(seg_type(
+                        id=cue.id,
+                        start=cue.start,
+                        end=cue.end,
+                        speaker_id=cue.speaker_id,
+                        text_raw=cue.text_raw,
+                        words=cue_words,
+                    ))
+        except Exception as exc:  # pragma: no cover
+            meta["phrase_segmentation_error"] = str(exc)
+
     # Configurable ASR context-term corrections are opt-in and data-driven.
     # Defaults are empty; populate from OCR/Jellyfin/IMDb/Sonarr evidence.
     context_terms = settings.get("context_terms", {}) or {}
