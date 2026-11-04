@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     parser.add_argument("--min-speakers", dest="min_speakers", type=int, default=None)
     parser.add_argument("--max-speakers", dest="max_speakers", type=int, default=None)
+    parser.add_argument("--num-speakers", dest="num_speakers", type=int, default=None)
     args = parser.parse_args()
 
     import torch
@@ -30,6 +31,8 @@ def main() -> int:
         pipeline_kwargs["min_speakers"] = args.min_speakers
     if args.max_speakers is not None:
         pipeline_kwargs["max_speakers"] = args.max_speakers
+    if args.num_speakers is not None:
+        pipeline_kwargs["num_speakers"] = args.num_speakers
 
     from pyannote.audio import Pipeline
 
