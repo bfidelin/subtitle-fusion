@@ -78,3 +78,20 @@ def test_sentence_mode_splits_sentences_not_speaker_turns():
     ]
     cues = segment_sentences(words)
     assert [cue.text_raw for cue in cues] == ["Previously on Below Deck.", "Welcome to Thailand."]
+
+
+def test_sentence_mode_splits_on_large_pause_without_punctuation():
+    from src.phrase_segmentation import segment_sentences
+
+    words = [
+        {"text": "Previously", "start": 5.42, "end": 5.984, "speaker_id": "Speaker_1"},
+        {"text": "on", "start": 6.165, "end": 6.286, "speaker_id": "Speaker_1"},
+        {"text": "Below", "start": 6.286, "end": 6.508, "speaker_id": "Speaker_1"},
+        {"text": "Deck", "start": 6.508, "end": 6.789, "speaker_id": "Speaker_1"},
+        {"text": "Welcome", "start": 7.736, "end": 8.058, "speaker_id": "Speaker_2"},
+        {"text": "to", "start": 8.058, "end": 8.139, "speaker_id": "Speaker_2"},
+        {"text": "Thailand,", "start": 8.139, "end": 8.36, "speaker_id": "Speaker_2"},
+    ]
+    cues = segment_sentences(words)
+    assert [cue.text_raw for cue in cues] == ["Previously on Below Deck", "Welcome to Thailand,"]
+    assert [cue.speaker_id for cue in cues] == ["Speaker_1", "Speaker_2"]

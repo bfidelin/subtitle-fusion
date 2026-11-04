@@ -302,7 +302,7 @@ def _is_sentence_end(text: str) -> bool:
     return bool(value) and value[-1] in ".?!"
 
 
-def segment_sentences(words, *, turns=None, max_chars=84, max_duration=8.0):
+def segment_sentences(words, *, turns=None, max_chars=84, max_duration=8.0, pause_break=0.8):
     """WhisperX-style sentence cues, then speaker attribution."""
     records = words_to_records(words)
     if turns:
@@ -318,7 +318,7 @@ def segment_sentences(words, *, turns=None, max_chars=84, max_duration=8.0):
     for word in records:
         if current:
             gap = float(word.get("start", 0.0)) - float(current[-1].get("end", 0.0))
-            if gap > 1.2:
+            if gap >= pause_break:
                 groups.append(current)
                 current = []
         current.append(word)

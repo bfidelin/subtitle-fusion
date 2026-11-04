@@ -24,8 +24,18 @@ def load_audio(path: str) -> tuple[torch.Tensor, int]:
     wav_path = wav_dir / "input.wav"
     cp = subprocess.run(
         [
-            "ffmpeg", "-nostdin", "-y", "-i", path,
-            "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path),
+            "ffmpeg",
+            "-nostdin",
+            "-y",
+            "-i",
+            path,
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            str(wav_path),
         ],
         capture_output=True,
         text=True,
