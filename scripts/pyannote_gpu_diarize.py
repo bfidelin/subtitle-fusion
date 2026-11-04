@@ -68,7 +68,9 @@ def main() -> int:
         audio_path = str(wav_path)
 
     result = pipeline(audio_path, **pipeline_kwargs)
-    diarization = getattr(result, "exclusive_speaker_diarization", None) or result.speaker_diarization
+    diarization = (
+        getattr(result, "exclusive_speaker_diarization", None) or result.speaker_diarization
+    )
     embeddings = getattr(result, "speaker_embeddings", None)
 
     labels: list[str] = []

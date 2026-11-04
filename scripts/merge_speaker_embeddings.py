@@ -19,6 +19,7 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--output", required=True)
     parser.add_argument("--threshold", type=float, default=0.70)
     parser.add_argument("--max-clips", type=int, default=3)
+    parser.add_argument("--constrained", action="store_true")
     return parser.parse_args()
 
 
@@ -62,13 +63,50 @@ def main() -> int:
             embeddings.append(np.zeros(256, dtype=np.float32))
     matrix = np.stack(embeddings)
     matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-8)
-    clustering = AgglomerativeClustering(
-        n_clusters=None,
-        distance_threshold=1.0 - args.threshold,
-        metric="cosine",
-        linkage="average",
-    )
-    cluster_ids = clustering.fit_predict(matrix)
+    windows = {
+        label: {int(turn["window"]) for turn in by_speaker[label] if "window" in turn}
+        for label in labels
+    }
+    if args.constrained and any(windows.values()):
+        clusters = [
+            {"members": [index], "windows": set(windows[label]), "vector": matrix[index]}
+            for index, label in enumerate(labels)
+        ]
+        while len(clusters) > 1:
+            best = None
+            for left in range(len(clusters)):
+                for right in range(left + 1, len(clusters)):
+                    if clusters[left]["windows"] & clusters[right]["windows"]:
+                        continue
+                    similarity = float(np.dot(clusters[left]["vector"], clusters[right]["vector"]))
+                    if similarity < args.threshold:
+                        continue
+                    if best is None or similarity > best[0]:
+                        best = (similarity, left, right)
+            if best is None:
+                break
+            _, left, right = best
+            vector = clusters[left]["vector"] + clusters[right]["vector"]
+            vector = vector / (np.linalg.norm(vector) + 1e-8)
+            clusters[left] = {
+                "members": clusters[left]["members"] + clusters[right]["members"],
+                "windows": clusters[left]["windows"] | clusters[right]["windows"],
+                "vector": vector,
+            }
+            clusters.pop(right)
+        cluster_ids = [0] * len(labels)
+        for cluster_index, cluster in enumerate(clusters):
+            for member in cluster["members"]:
+                cluster_ids[member] = cluster_index
+        cluster_ids = np.asarray(cluster_ids)
+    else:
+        clustering = AgglomerativeClustering(
+            n_clusters=None,
+            distance_threshold=1.0 - args.threshold,
+            metric="cosine",
+            linkage="average",
+        )
+        cluster_ids = clustering.fit_predict(matrix)
     label_to_speaker = {
         label: f"Speaker_{int(cluster) + 1}" for label, cluster in zip(labels, cluster_ids)
     }
