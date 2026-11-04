@@ -139,12 +139,12 @@ def _boundary_bias(words_before, next_word):
     prev = words_before[-1]
     bias = 10.0
     if str(prev.get("speaker_id")) != str(next_word.get("speaker_id")):
-        bias -= 60.0
+        bias -= 8.0
     else:
-        bias += 9.0
+        bias += 6.0
     punct_value = str(prev.get("text", "")).rstrip()
     if punct_value and punct_value[-1] in ".?!":
-        bias -= 10.0
+        bias -= 4.0
     elif punct_value and punct_value[-1] == ",":
         bias -= 6.0
     gap = float(next_word.get("start", 0.0)) - float(prev.get("end", 0.0))
@@ -191,25 +191,37 @@ def _dp_best(words, max_words, max_chars, max_duration):
     return starts
 
 
-def segment_words(words, *, turns=None, max_words=16, max_chars=84, max_duration=8.0):
+def segment_words(
+    words, *, turns=None, max_words=16, max_chars=84, max_duration=8.0, min_turn_gap=0.0
+):
     records = words_to_records(words)
     n = len(records)
+    reliable_turns = None
     if turns:
-        ordered = sorted(turns, key=lambda t: float(t.get("start", 0.0)))
-        for item in records:
-            start = float(item.get("start", 0.0))
-            end = float(item.get("end", start))
-            best = None
-            best_overlap = -1.0
-            for turn in ordered:
-                turn_start = float(turn.get("start", 0.0))
-                turn_end = float(turn.get("end", turn_start))
-                overlap = min(end, turn_end) - max(start, turn_start)
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    best = turn
-            if best is not None:
-                item["speaker_id"] = str(best.get("speaker", item.get("speaker_id", "UNKNOWN")))
+        reliable_turns = [
+            turn
+            for turn in turns
+            if float(turn.get("end", 0.0)) - float(turn.get("start", 0.0)) >= float(min_turn_gap)
+        ] or list(turns)
+    ordered = sorted(
+        reliable_turns or (turns if turns else []), key=lambda t: float(t.get("start", 0.0))
+    )
+    if turns is None:
+        ordered = []
+    for item in records:
+        start = float(item.get("start", 0.0))
+        end = float(item.get("end", start))
+        best = None
+        best_overlap = -1.0
+        for turn in ordered:
+            turn_start = float(turn.get("start", 0.0))
+            turn_end = float(turn.get("end", turn_start))
+            overlap = min(end, turn_end) - max(start, turn_start)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best = turn
+        if best is not None:
+            item["speaker_id"] = str(best.get("speaker", item.get("speaker_id", "UNKNOWN")))
     if n == 0:
         return []
     records.sort(key=lambda item: float(item.get("start", 0.0)))
@@ -230,8 +242,15 @@ def segment_words(words, *, turns=None, max_words=16, max_chars=84, max_duration
         prev = records[last_index - 1] if last_index > 0 else None
         if prev is not None and str(prev.get("speaker_id")) != str(chunk[0].get("speaker_id")):
             concern.append("speaker_boundary")
-        flag = "uncertain_boundary" if any("multi" in c or "speaker_boundary" in c for c in concern) else ("quality_issue" if issues else None)
-        speaker_id = max(speakers, key=lambda sp: sum(1 for w in chunk if str(w.get("speaker_id", "UNKNOWN")) == sp))
+        flag = (
+            "uncertain_boundary"
+            if any("multi" in c or "speaker_boundary" in c for c in concern)
+            else ("quality_issue" if issues else None)
+        )
+        speaker_id = max(
+            speakers,
+            key=lambda sp: sum(1 for w in chunk if str(w.get("speaker_id", "UNKNOWN")) == sp),
+        )
         cue = PhraseCue(
             id=len(cues) + 1,
             start=float(chunk[0].get("start", 0.0)),
@@ -248,16 +267,24 @@ def segment_words(words, *, turns=None, max_words=16, max_chars=84, max_duration
         tail = records[last_index:]
         if tail:
             speakers = {str(w.get("speaker_id", "UNKNOWN")) for w in tail}
-            speaker_id = max(speakers, key=lambda sp: sum(1 for w in tail if str(w.get("speaker_id", "UNKNOWN")) == sp))
-            cues.append(PhraseCue(
-                id=len(cues) + 1,
-                start=float(tail[0].get("start", 0.0)),
-                end=float(tail[-1].get("end", tail[-1].get("start", 0.0))),
-                speaker_id=speaker_id,
-                text_raw=" ".join(str(w.get("text", "")).strip() for w in tail).strip(),
-                words=list(tail),
-                flags=["quality_issue"] if (float(tail[-1].get("end", 0.0)) - float(tail[0].get("start", 0.0))) > max_duration else [],
-            ))
+            speaker_id = max(
+                speakers,
+                key=lambda sp: sum(1 for w in tail if str(w.get("speaker_id", "UNKNOWN")) == sp),
+            )
+            cues.append(
+                PhraseCue(
+                    id=len(cues) + 1,
+                    start=float(tail[0].get("start", 0.0)),
+                    end=float(tail[-1].get("end", tail[-1].get("start", 0.0))),
+                    speaker_id=speaker_id,
+                    text_raw=" ".join(str(w.get("text", "")).strip() for w in tail).strip(),
+                    words=list(tail),
+                    flags=["quality_issue"]
+                    if (float(tail[-1].get("end", 0.0)) - float(tail[0].get("start", 0.0)))
+                    > max_duration
+                    else [],
+                )
+            )
     for idx, cue in enumerate(cues, start=1):
         cue.id = idx
     return cues

@@ -268,7 +268,8 @@ def _coalesce_http_segments(segments: list[Segment]) -> list[Segment]:
         previous = merged[-1]
         total = len(previous.text_raw) + 1 + len(segment.text_raw)
         if (
-            (len(previous.words) <= 3 or previous.end - previous.start < 0.6)
+            previous.speaker_id == segment.speaker_id
+            and (len(previous.words) <= 3 or previous.end - previous.start < 0.6)
             and total <= 42
             and float(segment.start) - float(previous.end) <= 0.5
             and len(previous.words) + len(segment.words) <= 6
