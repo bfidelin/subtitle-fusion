@@ -128,12 +128,12 @@ def segment_by_pyannote_turns(segments, turns):
             if overlap > best_overlap:
                 best_overlap = overlap
                 best = str(turn.get("speaker", "UNKNOWN"))
-        for turn in ordered:
-            boundary = float(turn.get("start", 0.0))
-            if start + 0.05 < boundary < end - 0.05:
-                return str(turn.get("speaker", "UNKNOWN"))
-        if best != "UNKNOWN":
+        # Assignment is by maximum time overlap.  Do not override a
+        # better-supported turn merely because another boundary passes
+        # through the word.  If the overlap is too weak, return UNKNOWN.
+        if best != "UNKNOWN" and best_overlap > 0.0:
             return best
+        return "UNKNOWN"
         best = "UNKNOWN"
         best_distance = float("inf")
         for turn in ordered:

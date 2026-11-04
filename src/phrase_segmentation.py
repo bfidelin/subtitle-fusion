@@ -124,7 +124,7 @@ def _cue_quality(words, max_chars, max_duration):
         cost += 6.0
         issues.append("one_word")
     if len(speakers) > 1:
-        cost += 1000.0
+        cost += 40.0
         issues.append("multi_speaker")
     return cost, issues
 
@@ -139,12 +139,12 @@ def _boundary_bias(words_before, next_word):
     prev = words_before[-1]
     bias = 10.0
     if str(prev.get("speaker_id")) != str(next_word.get("speaker_id")):
-        bias -= 8.0
+        bias -= 40.0
     else:
         bias += 6.0
     punct_value = str(prev.get("text", "")).rstrip()
     if punct_value and punct_value[-1] in ".?!":
-        bias -= 4.0
+        bias -= 10.0
     elif punct_value and punct_value[-1] == ",":
         bias -= 6.0
     gap = float(next_word.get("start", 0.0)) - float(prev.get("end", 0.0))
@@ -206,22 +206,23 @@ def segment_words(
     ordered = sorted(
         reliable_turns or (turns if turns else []), key=lambda t: float(t.get("start", 0.0))
     )
-    if turns is None:
-        ordered = []
-    for item in records:
-        start = float(item.get("start", 0.0))
-        end = float(item.get("end", start))
-        best = None
-        best_overlap = -1.0
-        for turn in ordered:
-            turn_start = float(turn.get("start", 0.0))
-            turn_end = float(turn.get("end", turn_start))
-            overlap = min(end, turn_end) - max(start, turn_start)
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best = turn
-        if best is not None:
-            item["speaker_id"] = str(best.get("speaker", item.get("speaker_id", "UNKNOWN")))
+    if turns is not None and ordered:
+        for item in records:
+            start = float(item.get("start", 0.0))
+            end = float(item.get("end", start))
+            best = None
+            best_overlap = -1.0
+            for turn in ordered:
+                turn_start = float(turn.get("start", 0.0))
+                turn_end = float(turn.get("end", turn_start))
+                overlap = min(end, turn_end) - max(start, turn_start)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best = turn
+            if best is not None and best_overlap > 0.0:
+                item["speaker_id"] = str(best.get("speaker", item.get("speaker_id", "UNKNOWN")))
+            else:
+                item["speaker_id"] = "UNKNOWN"
     if n == 0:
         return []
     records.sort(key=lambda item: float(item.get("start", 0.0)))

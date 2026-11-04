@@ -56,7 +56,7 @@ def main() -> int:
             {
                 "start": float(segment["start"]),
                 "end": float(segment["end"]),
-                "speaker": f"Speaker_{labels.index(raw)+1}",
+                "speaker": f"Speaker_{labels.index(raw) + 1}",
             }
         )
 

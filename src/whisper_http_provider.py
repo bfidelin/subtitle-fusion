@@ -301,8 +301,14 @@ def _merge_adjacent_same_speaker(segments: list[Segment]) -> list[Segment]:
         previous_short = len(previous.words) <= 4 and len(previous.text_raw) <= 20
 
         # Only join truly tiny fragments from the same speaker. This avoids merging
- # an unrelated sentence boundary.
-        if previous.speaker_id == segment.speaker_id and gap <= 0.5 and previous_short and combined <= 84 and len(segment.words) <= 10:
+        # an unrelated sentence boundary.
+        if (
+            previous.speaker_id == segment.speaker_id
+            and gap <= 0.5
+            and previous_short
+            and combined <= 84
+            and len(segment.words) <= 10
+        ):
             previous.end = max(float(previous.end), float(segment.end))
             previous.text_raw = f"{previous.text_raw} {segment.text_raw}".strip()
             previous.words.extend(segment.words)
