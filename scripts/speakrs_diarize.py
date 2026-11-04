@@ -18,6 +18,7 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--chunk-sec", type=float, default=0.0)
     parser.add_argument("--overlap-sec", type=float, default=60.0)
     parser.add_argument("--vocals", action="store_true")
+    parser.add_argument("--raw-windows", action="store_true")
     parser.add_argument(
         "--separator-python", default="/home/calmos/miniconda3/envs/senko/bin/python"
     )
@@ -184,16 +185,31 @@ def main() -> int:
         )
         segments = getattr(result, "exclusive_segments", None) or result.segments
         labels = local_labels(segments)
-        existing = [turn for turn in turns if float(turn["end"]) > start]
-        mapping, next_id = assign_labels(labels, segments, start, existing, next_id)
-        for segment in segments:
-            turns.append(
-                {
-                    "start": round(start + float(segment.start), 3),
-                    "end": round(start + float(segment.end), 3),
-                    "speaker": mapping[str(segment.speaker)],
-                }
-            )
+        if args.raw_windows:
+            window_index = int(start // max(1.0, chunk - overlap_sec))
+            local_map = {
+                label: f"W{window_index}_S{index + 1}" for index, label in enumerate(labels)
+            }
+            for segment in segments:
+                turns.append(
+                    {
+                        "start": round(start + float(segment.start), 3),
+                        "end": round(start + float(segment.end), 3),
+                        "speaker": local_map[str(segment.speaker)],
+                        "window": window_index,
+                    }
+                )
+        else:
+            existing = [turn for turn in turns if float(turn["end"]) > start]
+            mapping, next_id = assign_labels(labels, segments, start, existing, next_id)
+            for segment in segments:
+                turns.append(
+                    {
+                        "start": round(start + float(segment.start), 3),
+                        "end": round(start + float(segment.end), 3),
+                        "speaker": mapping[str(segment.speaker)],
+                    }
+                )
         if end >= total:
             break
         start = end - overlap_sec

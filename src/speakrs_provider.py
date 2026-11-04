@@ -53,7 +53,8 @@ def run_speakrs_diarization(
             config.mode,
             "--profile",
             config.profile,
-        ] + (["--vocals"] if config.vocals else []),
+        ]
+        + (["--vocals"] if config.vocals else []),
         capture_output=True,
         text=True,
         timeout=config.timeout_sec,

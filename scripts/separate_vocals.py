@@ -23,8 +23,18 @@ def main() -> int:
     source = work / "separator_input.wav"
     cp = subprocess.run(
         [
-            "ffmpeg", "-nostdin", "-y", "-i", args.audio,
-            "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le", str(source),
+            "ffmpeg",
+            "-nostdin",
+            "-y",
+            "-i",
+            args.audio,
+            "-ac",
+            "2",
+            "-ar",
+            "44100",
+            "-c:a",
+            "pcm_s16le",
+            str(source),
         ],
         capture_output=True,
         text=True,
