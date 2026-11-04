@@ -11,6 +11,7 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--audio", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--mode", default="cuda")
+    parser.add_argument("--profile", default="precise", choices=["default", "precise"])
     return parser.parse_args()
 
 
@@ -43,7 +44,22 @@ def main() -> int:
         raise RuntimeError(f"ffmpeg extraction failed: {cp.stderr[-300:]}")
 
     pipeline = speakrs.Pipeline.from_pretrained(args.mode)
-    result = pipeline.diarize_file(str(wav_path))
+    pipeline_config = None
+    if args.profile == "precise":
+        from speakrs import ActivityCleanup, AhcConfig, ClusteringConfig, PipelineConfig, VbxConfig
+
+        pipeline_config = PipelineConfig(
+            activity=ActivityCleanup(min_active_frames=2, max_inactive_gap_frames=2),
+            clustering=ClusteringConfig(
+                ahc=AhcConfig(threshold=0.55),
+                vbx=VbxConfig(fa=0.07, fb=0.8, max_iters=20, epsilon=0.0001, init_smoothing=7.0),
+                speaker_keep_threshold=1e-7,
+            ),
+            merge_gap=0.2,
+            reconstruct_method="smoothed",
+            smoothing_epsilon=0.05,
+        )
+    result = pipeline.diarize_file(str(wav_path), pipeline_config=pipeline_config)
     labels: list[str] = []
     for segment in result.segments:
         label = str(segment.speaker)
