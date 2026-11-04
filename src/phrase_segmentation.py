@@ -289,3 +289,82 @@ def segment_words(
     for idx, cue in enumerate(cues, start=1):
         cue.id = idx
     return cues
+
+
+def _is_sentence_end(text: str) -> bool:
+    value = str(text or "").strip().rstrip("\"'”’)")
+    return bool(value) and value[-1] in ".?!"
+
+
+def segment_sentences(words, *, turns=None, max_chars=84, max_duration=8.0):
+    """WhisperX-style sentence cues, then speaker attribution."""
+    records = words_to_records(words)
+    if turns:
+        # Reuse the same overlap-based word/speaker mapping, but never
+        # split a sentence because of a turn boundary here.
+        build_turn_speaker_map(records, turns)
+    n = len(records)
+    if n == 0:
+        return []
+    records.sort(key=lambda item: float(item.get("start", 0.0)))
+    groups = []
+    current = []
+    for word in records:
+        if current:
+            gap = float(word.get("start", 0.0)) - float(current[-1].get("end", 0.0))
+            if gap > 1.2:
+                groups.append(current)
+                current = []
+        current.append(word)
+        text = " ".join(str(w.get("text", "")).strip() for w in current)
+        duration = float(current[-1].get("end", 0.0)) - float(current[0].get("start", 0.0))
+        if _is_sentence_end(word.get("text", "")) or len(text) >= max_chars or duration >= max_duration:
+            groups.append(current)
+            current = []
+    if current:
+        groups.append(current)
+    cues = []
+    for group in groups:
+        speakers = [str(w.get("speaker_id", "UNKNOWN")) for w in group]
+        unique = sorted(set(speakers))
+        if len(unique) == 1:
+            speaker_id = unique[0]
+        else:
+            # Preserve the phrase as one editorial cue. Attribute it to the
+            # final speaker (the phrase's completion), and keep per-word IDs.
+            tail_speaker = next((s for s in reversed(speakers) if s not in ("", "UNKNOWN")), "UNKNOWN")
+            speaker_id = tail_speaker
+        cues.append(PhraseCue(
+            id=len(cues) + 1,
+            start=float(group[0].get("start", 0.0)),
+            end=float(group[-1].get("end", group[-1].get("start", 0.0))),
+            speaker_id=speaker_id,
+            text_raw=" ".join(str(w.get("text", "")).strip() for w in group).strip(),
+            words=list(group),
+            concerns=["multi_speaker_cue"] if len(unique) > 1 else [],
+            flags=["mixed_speakers"] if len(unique) > 1 else [],
+        ))
+    for idx, cue in enumerate(cues, start=1):
+        cue.id = idx
+    return cues
+
+
+def build_turn_speaker_map(records, turns):
+    """Assign each word a speaker by maximum turn overlap."""
+    ordered = sorted(turns or [], key=lambda t: float(t.get("start", 0.0)))
+    for item in records:
+        start = float(item.get("start", 0.0))
+        end = float(item.get("end", start))
+        best = None
+        best_overlap = -1.0
+        for turn in ordered:
+            turn_start = float(turn.get("start", 0.0))
+            turn_end = float(turn.get("end", turn_start))
+            overlap = min(end, turn_end) - max(start, turn_start)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best = turn
+        if best is not None and best_overlap > 0.0:
+            item["speaker_id"] = str(best.get("speaker", item.get("speaker_id", "UNKNOWN")))
+        elif str(item.get("speaker_id", "")) in ("", "UNKNOWN"):
+            item["speaker_id"] = "UNKNOWN"
