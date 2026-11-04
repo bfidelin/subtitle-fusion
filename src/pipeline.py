@@ -89,7 +89,7 @@ def ingest_transcript(
 
         cfg = WhisperHttpConfig.from_mapping(settings.get("whisper_http"))
         diarization_provider = settings.get("providers", {}).get("diarization")
-        if diarization_provider in {"none", "disabled", None, "pyannote_gpu", "senko_gpu"}:
+        if diarization_provider in {"none", "disabled", None, "pyannote_gpu", "senko_gpu", "speakrs"}:
             cfg.diarize = False
         run = WhisperHttpProvider(cfg).transcribe(video_path)
         segments = run.segments
@@ -134,6 +134,27 @@ def ingest_transcript(
                 senko_cfg = SenkoGpuConfig.from_mapping(settings.get("senko_gpu"))
                 turns, embeddings = run_senko_diarization(video_path, senko_cfg)
             except SenkoGpuUnavailableError as exc:
+                raise ValueError(str(exc)) from exc
+            speaker_turns = [
+                SpeakerTurn(
+                    start=float(turn.get("start", 0.0)),
+                    end=float(turn.get("end", 0.0)),
+                    speaker_id=str(turn.get("speaker", "UNKNOWN")),
+                )
+                for turn in turns
+            ]
+            segments = segment_by_pyannote_turns(segments, turns)
+            if embeddings:
+                speaker_embeddings = embeddings
+
+        if diarization_provider == "speakrs":
+            from src.pyannote_gpu_provider import segment_by_pyannote_turns
+            from src.speakrs_provider import SpeakrsConfig, SpeakrsUnavailableError, run_speakrs_diarization
+
+            try:
+                speakrs_cfg = SpeakrsConfig.from_mapping(settings.get("speakrs"))
+                turns, embeddings = run_speakrs_diarization(video_path, speakrs_cfg)
+            except SpeakrsUnavailableError as exc:
                 raise ValueError(str(exc)) from exc
             speaker_turns = [
                 SpeakerTurn(

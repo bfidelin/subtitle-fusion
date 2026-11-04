@@ -1,0 +1,58 @@
+pipeline:
+  enable_media_preflight: true
+  reuse_embedded_subtitles: false
+  enable_ocr: true
+  enable_imdb: true
+  enable_sdh: true
+  write_debug_json: true
+  enable_llm_review: false
+  enable_forced_alignment: true
+providers:
+  asr: whisper_http
+  diarization: speakrs
+  ocr: sparse
+  imdb: local_tsv
+  vision: stub
+voiceprints:
+  enabled: true
+  min_score: 0.78
+  min_margin: 0.04
+  max_samples_per_character: 12
+  store_dir: data/voiceprints
+whisper_http:
+  url: http://127.0.0.1:9000/asr
+  language: null
+  engine: faster_whisper
+  encode: true
+  task: transcribe
+  vad_filter: true
+  word_timestamps: true
+  output: json
+  diarize: false
+  diarize_threshold: null
+  timeout_sec: 720
+senko_gpu:
+  python: /home/calmos/miniconda3/envs/senko/bin/python
+  script: /home/calmos/subtitle-fusion/scripts/senko_gpu_diarize.py
+  timeout_sec: 120
+  min_speakers: null
+  max_speakers: null
+speakrs:
+  python: /home/calmos/venvs/speakrs/bin/python
+  script: /home/calmos/subtitle-fusion/scripts/speakrs_diarize.py
+  mode: cuda
+  timeout_sec: 120
+ocr:
+  periodic_fps: 0.5
+forced_alignment:
+  python: /home/calmos/miniconda3/envs/senko/bin/python
+  script: /home/calmos/subtitle-fusion/scripts/forced_align_worker.py
+  timeout_sec: 240
+  language: en
+paths:
+  cache_dir: data/cache
+  imdb_dir: data/imdb
+  work_dir: data/work
+context_terms:
+  Blow Deck: Below Deck
+  Blodak: Below Deck
