@@ -31,7 +31,9 @@ class PyannoteGpuUnavailableError(RuntimeError):
     """Raised when the local pyannote subprocess cannot run."""
 
 
-def run_pyannote_diarization(media_path: Path, config: PyannoteGpuConfig) -> tuple[list[dict[str, Any]], dict[str, list[float]]]:
+def run_pyannote_diarization(
+    media_path: Path, config: PyannoteGpuConfig
+) -> tuple[list[dict[str, Any]], dict[str, list[float]]]:
     media_path = Path(media_path)
     if not media_path.is_file():
         raise FileNotFoundError(f"media file not found: {media_path}")
@@ -42,7 +44,14 @@ def run_pyannote_diarization(media_path: Path, config: PyannoteGpuConfig) -> tup
 
     with tempfile.TemporaryDirectory(prefix="subtitle-fusion-pyannote-") as tmp:
         output_path = Path(tmp) / "pyannote.json"
-        command = [config.python, config.script, "--audio", str(media_path), "--output", str(output_path)]
+        command = [
+            config.python,
+            config.script,
+            "--audio",
+            str(media_path),
+            "--output",
+            str(output_path),
+        ]
         if config.min_speakers is not None:
             command += ["--min-speakers", str(config.min_speakers)]
         if config.max_speakers is not None:
@@ -58,10 +67,21 @@ def run_pyannote_diarization(media_path: Path, config: PyannoteGpuConfig) -> tup
             except OSError:
                 continue
 
-        cp = subprocess.run(command, capture_output=True, text=True, timeout=config.timeout_sec, check=False, env=env, cwd="/home/calmos")
+        cp = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=config.timeout_sec,
+            check=False,
+            env=env,
+            cwd="/home/calmos",
+        )
         if cp.returncode != 0 or not output_path.is_file():
             raise PyannoteGpuUnavailableError(f"pyannote failed: {(cp.stderr or cp.stdout)[-500:]}")
-        payload = json.loads(output_path.read_text())
+        try:
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise PyannoteGpuUnavailableError(f"pyannote returned invalid JSON: {exc}") from exc
         turns = [item for item in payload.get("speaker_turns", []) if isinstance(item, dict)]
         embeddings = {
             str(k): [float(x) for x in v]
@@ -71,13 +91,19 @@ def run_pyannote_diarization(media_path: Path, config: PyannoteGpuConfig) -> tup
         return turns, embeddings
 
 
-def assign_speakers(segments: list[Any], turns: list[dict[str, Any]], fallback: str = "UNKNOWN") -> list[dict[str, Any]]:
-    ordered = sorted(turns, key=lambda item: (float(item.get("start", 0.0)), float(item.get("end", 0.0))))
+def assign_speakers(
+    segments: list[Any], turns: list[dict[str, Any]], fallback: str = "UNKNOWN"
+) -> list[dict[str, Any]]:
+    ordered = sorted(
+        turns, key=lambda item: (float(item.get("start", 0.0)), float(item.get("end", 0.0)))
+    )
     for segment in segments:
         best_speaker = fallback
         best_overlap = 0.0
         for turn in ordered:
-            overlap = min(float(segment.end), float(turn.get("end", 0.0))) - max(float(segment.start), float(turn.get("start", 0.0)))
+            overlap = min(float(segment.end), float(turn.get("end", 0.0))) - max(
+                float(segment.start), float(turn.get("start", 0.0))
+            )
             if overlap > best_overlap:
                 best_overlap = overlap
                 best_speaker = str(turn.get("speaker", fallback))
@@ -86,7 +112,9 @@ def assign_speakers(segments: list[Any], turns: list[dict[str, Any]], fallback: 
 
 
 def segment_by_pyannote_turns(segments, turns):
-    ordered = sorted(turns, key=lambda item: (float(item.get("start", 0.0)), float(item.get("end", 0.0))))
+    ordered = sorted(
+        turns, key=lambda item: (float(item.get("start", 0.0)), float(item.get("end", 0.0)))
+    )
 
     def speaker_for(word):
         start = float(word.start)
