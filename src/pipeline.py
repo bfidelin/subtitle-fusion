@@ -277,10 +277,31 @@ def run_pipeline(
         segments, speaker_turns, speaker_embeddings, language = asr_future.result()
 
     # Apply trained phrase/cue resegmentation (optional, deterministic).
-    if settings.get("pipeline", {}).get("enable_phrase_segmentation", True):
+    enable_phrase = bool(settings.get("pipeline", {}).get("enable_phrase_segmentation", True))
+    min_turn_gap = float(settings.get("pipeline", {}).get("phrase_min_turn_gap", 0.0))
+    phrase_mandatory = bool(settings.get("pipeline", {}).get("phrase_segmentation_mandatory", True))
+    if enable_phrase:
         try:
             from src.phrase_segmentation import segment_words
 
+            turn_dicts = []
+            for turn in speaker_turns or []:
+                if hasattr(turn, "start") and not isinstance(turn, dict):
+                    turn_dicts.append(
+                        {
+                            "start": float(turn.start),
+                            "end": float(turn.end),
+                            "speaker": str(turn.speaker_id),
+                        }
+                    )
+                elif isinstance(turn, dict):
+                    turn_dicts.append(
+                        {
+                            "start": float(turn.get("start", 0.0)),
+                            "end": float(turn.get("end", 0.0)),
+                            "speaker": str(turn.get("speaker", turn.get("speaker_id", "UNKNOWN"))),
+                        }
+                    )
             flattened = []
             for seg in segments:
                 if getattr(seg, "words", None):
@@ -290,11 +311,9 @@ def run_pipeline(
                                 "text": str(getattr(word, "text", "")),
                                 "start": float(getattr(word, "start", seg.start)),
                                 "end": float(getattr(word, "end", seg.end)),
-                                "speaker_id": (
-                                    str(getattr(word, "speaker_id", None))
-                                    if str(getattr(word, "speaker_id", None)) not in ("", "UNKNOWN")
-                                    else str(seg.speaker_id)
-                                ),
+                                "speaker_id": str(seg.speaker_id)
+                                if str(getattr(word, "speaker_id", None)) in ("", "UNKNOWN")
+                                else str(getattr(word, "speaker_id", None)),
                                 "confidence": getattr(word, "confidence", None),
                             }
                         )
@@ -307,8 +326,7 @@ def run_pipeline(
                             "speaker_id": seg.speaker_id,
                         }
                     )
-            phrase_cues = segment_words(flattened, turns=speaker_turns, min_turn_gap=0.8)
-            # Rebuild model segments while preserving only stable fields.
+            phrase_cues = segment_words(flattened, turns=turn_dicts, min_turn_gap=min_turn_gap)
             seg_type = type(segments[0]) if segments else None
             if seg_type is not None:
                 segments = []
@@ -323,7 +341,7 @@ def run_pipeline(
                                 start=float(word_rec.get("start", cue.start)),
                                 end=float(word_rec.get("end", cue.end)),
                                 confidence=word_rec.get("confidence"),
-                                speaker_id=str(word_rec.get("speaker_id", cue.speaker_id)),
+                                speaker_id=cue.speaker_id,
                             )
                         )
                     segments.append(
@@ -336,8 +354,15 @@ def run_pipeline(
                             words=cue_words,
                         )
                     )
-        except Exception as exc:  # pragma: no cover
-            meta["phrase_segmentation_error"] = str(exc)
+            meta["phrase_segmentation"] = {"ran": True, "cue_count": len(segments), "error": None}
+        except Exception as exc:
+            meta["phrase_segmentation"] = {"ran": False, "cue_count": None, "error": str(exc)}
+            if phrase_mandatory:
+                raise ValueError(f"phrase segmentation failed: {exc}") from exc
+    else:
+        meta["phrase_segmentation"] = {"ran": False, "cue_count": None, "error": None}
+    # Configurable ASR context-term corrections are opt-in and data-driven.
+    # Defaults are empty; populate from OCR/Jellyfin/IMDb/Sonarr evidence.
 
     # Configurable ASR context-term corrections are opt-in and data-driven.
     # Defaults are empty; populate from OCR/Jellyfin/IMDb/Sonarr evidence.

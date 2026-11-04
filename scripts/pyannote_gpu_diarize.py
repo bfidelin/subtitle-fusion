@@ -41,11 +41,27 @@ def main() -> int:
     audio_path = args.audio
     if not str(audio_path).lower().endswith(".wav"):
         import subprocess
-        import tempfile
-        wav_path = Path(tempfile.mkdtemp()) / "input.wav"
+
+        TMP_BASE = Path("/home/calmos/tmp/pyannote")
+        TMP_BASE.mkdir(parents=True, exist_ok=True)
+        wav_path = TMP_BASE / "input.wav"
         cp = subprocess.run(
-            ["ffmpeg", "-y", "-nostdin", "-i", str(audio_path), "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path)],
-            capture_output=True, text=True,
+            [
+                "ffmpeg",
+                "-y",
+                "-nostdin",
+                "-i",
+                str(audio_path),
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "pcm_s16le",
+                str(wav_path),
+            ],
+            capture_output=True,
+            text=True,
         )
         if cp.returncode != 0 or not wav_path.is_file() or wav_path.stat().st_size == 0:
             raise RuntimeError(f"ffmpeg extraction failed: {cp.stderr[-300:]}")
@@ -84,7 +100,9 @@ def main() -> int:
     Path(args.output).write_text(
         json.dumps({"speaker_turns": turns, "speaker_embeddings": embedding_map})
     )
-    print(json.dumps({"turns": len(turns), "speakers": len(labels), "embeddings": len(embedding_map)}))
+    print(
+        json.dumps({"turns": len(turns), "speakers": len(labels), "embeddings": len(embedding_map)})
+    )
     return 0
 
 
