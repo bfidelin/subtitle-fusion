@@ -21,7 +21,8 @@ class SpeakrsConfig:
     script: str = DEFAULT_SCRIPT
     mode: str = "cuda"
     profile: str = "precise"
-    timeout_sec: float = 240.0
+    vocals: bool = False
+    timeout_sec: float = 420.0
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any] | None) -> "SpeakrsConfig":
@@ -52,7 +53,7 @@ def run_speakrs_diarization(
             config.mode,
             "--profile",
             config.profile,
-        ],
+        ] + (["--vocals"] if config.vocals else []),
         capture_output=True,
         text=True,
         timeout=config.timeout_sec,

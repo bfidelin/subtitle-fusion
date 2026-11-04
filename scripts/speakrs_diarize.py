@@ -17,6 +17,9 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--profile", default="precise", choices=["default", "precise"])
     parser.add_argument("--chunk-sec", type=float, default=0.0)
     parser.add_argument("--overlap-sec", type=float, default=60.0)
+    parser.add_argument("--vocals", action="store_true")
+    parser.add_argument("--separator-python", default="/home/calmos/miniconda3/envs/senko/bin/python")
+    parser.add_argument("--separator-script", default="/home/calmos/subtitle-fusion/scripts/separate_vocals.py")
     return parser.parse_args()
 
 
@@ -105,17 +108,23 @@ def main() -> int:
     work = Path("/home/calmos/tmp/speakrs")
     work.mkdir(parents=True, exist_ok=True)
     wav_path = work / "input.wav"
-    cp = subprocess.run(
-        [
-            "ffmpeg", "-nostdin", "-y", "-i", str(args.audio),
-            "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if cp.returncode != 0 or not wav_path.is_file():
-        raise RuntimeError(f"ffmpeg extraction failed: {cp.stderr[-300:]}")
-
+    if args.vocals:
+        wav_path = work / "vocals.wav"
+        cp = subprocess.run(
+            [args.separator_python, args.separator_script, "--audio", str(args.audio), "--output", str(wav_path)],
+            capture_output=True,
+            text=True,
+        )
+        if cp.returncode != 0 or not wav_path.is_file():
+            raise RuntimeError(f"vocal separation failed: {cp.stderr[-300:]}")
+    else:
+        cp = subprocess.run(
+            ["ffmpeg", "-nostdin", "-y", "-i", str(args.audio), "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path)],
+            capture_output=True,
+            text=True,
+        )
+        if cp.returncode != 0 or not wav_path.is_file():
+            raise RuntimeError(f"ffmpeg extraction failed: {cp.stderr[-300:]}")
     samples = read_wav(wav_path)
     pipeline = speakrs.Pipeline.from_pretrained(args.mode)
     pipeline_config = make_config(speakrs, args.profile)
