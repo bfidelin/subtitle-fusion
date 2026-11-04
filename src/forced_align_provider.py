@@ -29,11 +29,11 @@ class ForcedAlignConfig:
         return cls(**{k: v for k, v in data.items() if k in allowed})
 
 
-def align_segments(
-    media_path: Path, segments: list[Any], config: ForcedAlignConfig
-) -> list[Any]:
+def align_segments(media_path: Path, segments: list[Any], config: ForcedAlignConfig) -> list[Any]:
     if not Path(config.python).is_file():
-        raise ForcedAlignmentUnavailableError("forced-alignment Python environment is not installed")
+        raise ForcedAlignmentUnavailableError(
+            "forced-alignment Python environment is not installed"
+        )
     if not Path(config.script).is_file():
         raise ForcedAlignmentUnavailableError("forced-alignment worker is missing")
     if config.language not in {"en", "eng", None}:
