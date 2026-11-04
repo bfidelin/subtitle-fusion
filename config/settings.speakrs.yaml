@@ -41,6 +41,7 @@ speakrs:
   python: /home/calmos/venvs/speakrs/bin/python
   script: /home/calmos/subtitle-fusion/scripts/speakrs_diarize.py
   mode: cuda
+  profile: precise
   timeout_sec: 120
 ocr:
   periodic_fps: 0.5

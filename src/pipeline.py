@@ -89,7 +89,14 @@ def ingest_transcript(
 
         cfg = WhisperHttpConfig.from_mapping(settings.get("whisper_http"))
         diarization_provider = settings.get("providers", {}).get("diarization")
-        if diarization_provider in {"none", "disabled", None, "pyannote_gpu", "senko_gpu", "speakrs"}:
+        if diarization_provider in {
+            "none",
+            "disabled",
+            None,
+            "pyannote_gpu",
+            "senko_gpu",
+            "speakrs",
+        }:
             cfg.diarize = False
         run = WhisperHttpProvider(cfg).transcribe(video_path)
         segments = run.segments
@@ -149,7 +156,11 @@ def ingest_transcript(
 
         if diarization_provider == "speakrs":
             from src.pyannote_gpu_provider import segment_by_pyannote_turns
-            from src.speakrs_provider import SpeakrsConfig, SpeakrsUnavailableError, run_speakrs_diarization
+            from src.speakrs_provider import (
+                SpeakrsConfig,
+                SpeakrsUnavailableError,
+                run_speakrs_diarization,
+            )
 
             try:
                 speakrs_cfg = SpeakrsConfig.from_mapping(settings.get("speakrs"))

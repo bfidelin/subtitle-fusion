@@ -20,6 +20,7 @@ class SpeakrsConfig:
     python: str = DEFAULT_PYTHON
     script: str = DEFAULT_SCRIPT
     mode: str = "cuda"
+    profile: str = "precise"
     timeout_sec: float = 240.0
 
     @classmethod
@@ -49,6 +50,8 @@ def run_speakrs_diarization(
             str(output),
             "--mode",
             config.mode,
+            "--profile",
+            config.profile,
         ],
         capture_output=True,
         text=True,
