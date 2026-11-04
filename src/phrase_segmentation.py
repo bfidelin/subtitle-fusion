@@ -124,7 +124,7 @@ def _cue_quality(words, max_chars, max_duration):
         cost += 6.0
         issues.append("one_word")
     if len(speakers) > 1:
-        cost += 40.0
+        cost += 500.0
         issues.append("multi_speaker")
     return cost, issues
 
@@ -165,30 +165,42 @@ def _boundary_bias(words_before, next_word):
 
 def _dp_best(words, max_words, max_chars, max_duration):
     n = len(words)
-    INF = 10**9
+    INF = 10 ** 9
     dp = [INF] * (n + 1)
     parent = [-1] * (n + 1)
     dp[0] = 0.0
-    for i in range(n):
-        if dp[i] >= INF:
-            continue
-        for j in range(i + 1, min(n, i + max_words) + 1):
-            chunk = words[i:j]
-            cue_cost, issues = _cue_quality(chunk, max_chars, max_duration)
-            transition = _boundary_bias(chunk, words[j]) if j < n else 0.0
-            total = dp[i] + cue_cost + transition
-            if total < dp[j]:
-                dp[j] = total
-                parent[j] = i
-    if not dp[n] < INF:
+
+    # Build DP in end-index order so each predecessor is already known.
+    for end in range(1, n + 1):
+        start_begin = max(0, end - max_words)
+        for start in range(start_begin, end):
+            chunk = words[start:end]
+            cost, _issues = _cue_quality(chunk, max_chars, max_duration)
+            transition = 0.0
+            if end < n:
+                transition = _boundary_bias(chunk, words[end])
+            total = dp[start] + cost + transition
+            if dp[start] < INF and total < dp[end]:
+                dp[end] = total
+                parent[end] = start
+
+    if dp[n] >= INF:
         return list(range(1, n + 1))
-    starts = []
-    i = n
-    while i > 0:
-        starts.append(parent[i])
-        i = parent[i]
-    starts.reverse()
-    return starts
+    cuts = []
+    pos = n
+    while pos > 0 and parent[pos] >= 0:
+        cuts.append(parent[pos])
+        prior = parent[pos]
+        if prior <= 0:
+            break
+        pos = prior
+    if pos > 0:
+        cuts.append(pos)
+    cuts = sorted(cut for cut in set(cuts) if cut not in (0, n))
+    # Include the final boundary to guarantee full coverage.
+    if n not in cuts:
+        cuts.append(n)
+    return [cut for cut in sorted(set(cuts)) if 0 < cut < n] + ([n] if n > 0 else [])
 
 
 def segment_words(
@@ -248,10 +260,7 @@ def segment_words(
             if any("multi" in c or "speaker_boundary" in c for c in concern)
             else ("quality_issue" if issues else None)
         )
-        speaker_id = max(
-            speakers,
-            key=lambda sp: sum(1 for w in chunk if str(w.get("speaker_id", "UNKNOWN")) == sp),
-        )
+        speaker_id = sorted(speakers)[0] if len(speakers) == 1 else "+".join(sorted(speakers))
         cue = PhraseCue(
             id=len(cues) + 1,
             start=float(chunk[0].get("start", 0.0)),
@@ -268,10 +277,7 @@ def segment_words(
         tail = records[last_index:]
         if tail:
             speakers = {str(w.get("speaker_id", "UNKNOWN")) for w in tail}
-            speaker_id = max(
-                speakers,
-                key=lambda sp: sum(1 for w in tail if str(w.get("speaker_id", "UNKNOWN")) == sp),
-            )
+            speaker_id = sorted(speakers)[0] if len(speakers) == 1 else "+".join(sorted(speakers))
             cues.append(
                 PhraseCue(
                     id=len(cues) + 1,
