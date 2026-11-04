@@ -276,6 +276,21 @@ def run_pipeline(
 
         segments, speaker_turns, speaker_embeddings, language = asr_future.result()
 
+    if settings.get("pipeline", {}).get("enable_forced_alignment", False):
+        try:
+            from src.forced_align_provider import ForcedAlignConfig, align_segments
+
+            fa_cfg = ForcedAlignConfig.from_mapping(settings.get("forced_alignment"))
+            if language and str(language).lower() not in {"en", "eng"}:
+                meta["forced_alignment"] = {"ran": False, "error": None, "skipped": "language"}
+            else:
+                segments = align_segments(video_path, segments, fa_cfg)
+                meta["forced_alignment"] = {"ran": True, "error": None}
+        except Exception as exc:
+            meta["forced_alignment"] = {"ran": False, "error": str(exc)}
+            if bool(settings.get("pipeline", {}).get("forced_alignment_mandatory", True)):
+                raise ValueError(f"forced alignment failed: {exc}") from exc
+
     # Apply trained phrase/cue resegmentation (optional, deterministic).
     enable_phrase = bool(settings.get("pipeline", {}).get("enable_phrase_segmentation", True))
     min_turn_gap = float(settings.get("pipeline", {}).get("phrase_min_turn_gap", 0.0))
@@ -328,7 +343,9 @@ def run_pipeline(
                     )
             mode = str(settings.get("pipeline", {}).get("phrase_segmentation_mode", "sentence"))
             if mode == "sentence":
-                phrase_cues = segment_sentences(flattened, turns=turn_dicts, max_chars=84, max_duration=8.0)
+                phrase_cues = segment_sentences(
+                    flattened, turns=turn_dicts, max_chars=84, max_duration=8.0
+                )
             else:
                 phrase_cues = segment_words(flattened, turns=turn_dicts, min_turn_gap=min_turn_gap)
             seg_type = type(segments[0]) if segments else None
