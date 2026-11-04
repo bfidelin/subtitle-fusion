@@ -47,3 +47,34 @@ def test_e03_cold_open_example():
     cues = segment_words(words)
     print([(x.speaker_id, x.text_raw) for x in cues])
     assert sum(len(x.text_raw.split()) for x in cues) == 3
+
+
+def test_sentence_mode_keeps_really_good_whole():
+    from src.phrase_segmentation import segment_sentences
+
+    words = [
+        {"text": "Really,", "start": 11.24, "end": 11.72, "speaker_id": "0"},
+        {"text": "really", "start": 11.92, "end": 12.18, "speaker_id": "0"},
+        {"text": "good.", "start": 12.18, "end": 12.54, "speaker_id": "1"},
+    ]
+    cues = segment_sentences(words)
+    assert len(cues) == 1
+    assert cues[0].text_raw == "Really, really good."
+    assert cues[0].speaker_id == "1"
+    assert "multi_speaker_cue" in cues[0].concerns
+
+
+def test_sentence_mode_splits_sentences_not_speaker_turns():
+    from src.phrase_segmentation import segment_sentences
+
+    words = [
+        {"text": "Previously", "start": 5.38, "end": 5.8, "speaker_id": "0"},
+        {"text": "on", "start": 5.8, "end": 6.22, "speaker_id": "0"},
+        {"text": "Below", "start": 6.22, "end": 6.42, "speaker_id": "0"},
+        {"text": "Deck.", "start": 6.42, "end": 6.78, "speaker_id": "0"},
+        {"text": "Welcome", "start": 6.68, "end": 7.76, "speaker_id": "1"},
+        {"text": "to", "start": 7.92, "end": 8.08, "speaker_id": "1"},
+        {"text": "Thailand.", "start": 8.08, "end": 8.36, "speaker_id": "1"},
+    ]
+    cues = segment_sentences(words)
+    assert [cue.text_raw for cue in cues] == ["Previously on Below Deck.", "Welcome to Thailand."]

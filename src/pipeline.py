@@ -282,7 +282,7 @@ def run_pipeline(
     phrase_mandatory = bool(settings.get("pipeline", {}).get("phrase_segmentation_mandatory", True))
     if enable_phrase:
         try:
-            from src.phrase_segmentation import segment_words
+            from src.phrase_segmentation import segment_sentences, segment_words
 
             turn_dicts = []
             for turn in speaker_turns or []:
@@ -326,7 +326,11 @@ def run_pipeline(
                             "speaker_id": seg.speaker_id,
                         }
                     )
-            phrase_cues = segment_words(flattened, turns=turn_dicts, min_turn_gap=min_turn_gap)
+            mode = str(settings.get("pipeline", {}).get("phrase_segmentation_mode", "sentence"))
+            if mode == "sentence":
+                phrase_cues = segment_sentences(flattened, turns=turn_dicts, max_chars=84, max_duration=8.0)
+            else:
+                phrase_cues = segment_words(flattened, turns=turn_dicts, min_turn_gap=min_turn_gap)
             seg_type = type(segments[0]) if segments else None
             if seg_type is not None:
                 segments = []
