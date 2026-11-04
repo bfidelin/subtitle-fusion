@@ -18,8 +18,12 @@ def parse() -> argparse.Namespace:
     parser.add_argument("--chunk-sec", type=float, default=0.0)
     parser.add_argument("--overlap-sec", type=float, default=60.0)
     parser.add_argument("--vocals", action="store_true")
-    parser.add_argument("--separator-python", default="/home/calmos/miniconda3/envs/senko/bin/python")
-    parser.add_argument("--separator-script", default="/home/calmos/subtitle-fusion/scripts/separate_vocals.py")
+    parser.add_argument(
+        "--separator-python", default="/home/calmos/miniconda3/envs/senko/bin/python"
+    )
+    parser.add_argument(
+        "--separator-script", default="/home/calmos/subtitle-fusion/scripts/separate_vocals.py"
+    )
     return parser.parse_args()
 
 
@@ -55,16 +59,16 @@ def make_config(speakrs, profile: str):
     )
 
 
-def local_labels(result) -> list[str]:
+def local_labels(segments) -> list[str]:
     labels: list[str] = []
-    for segment in result.segments:
+    for segment in segments:
         label = str(segment.speaker)
         if label not in labels:
             labels.append(label)
     return labels
 
 
-def assign_labels(local: list[str], result, window_start: float, existing, next_id: int):
+def assign_labels(local: list[str], segments, window_start: float, existing, next_id: int):
     mapping: dict[str, str] = {}
     if not existing:
         for label in local:
@@ -78,7 +82,7 @@ def assign_labels(local: list[str], result, window_start: float, existing, next_
         best_global = ""
         for global_label in {turn["speaker"] for turn in existing}:
             score = 0.0
-            for segment in result.segments:
+            for segment in segments:
                 if str(segment.speaker) != label:
                     continue
                 a0 = window_start + float(segment.start)
@@ -111,7 +115,14 @@ def main() -> int:
     if args.vocals:
         wav_path = work / "vocals.wav"
         cp = subprocess.run(
-            [args.separator_python, args.separator_script, "--audio", str(args.audio), "--output", str(wav_path)],
+            [
+                args.separator_python,
+                args.separator_script,
+                "--audio",
+                str(args.audio),
+                "--output",
+                str(wav_path),
+            ],
             capture_output=True,
             text=True,
         )
@@ -119,7 +130,20 @@ def main() -> int:
             raise RuntimeError(f"vocal separation failed: {cp.stderr[-300:]}")
     else:
         cp = subprocess.run(
-            ["ffmpeg", "-nostdin", "-y", "-i", str(args.audio), "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path)],
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-y",
+                "-i",
+                str(args.audio),
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "pcm_s16le",
+                str(wav_path),
+            ],
             capture_output=True,
             text=True,
         )
@@ -132,7 +156,8 @@ def main() -> int:
     next_id = 1
     if float(args.chunk_sec) <= 0:
         result = pipeline.diarize_file(str(wav_path), pipeline_config=pipeline_config)
-        labels = local_labels(result)
+        segments = getattr(result, "exclusive_segments", None) or result.segments
+        labels = local_labels(segments)
         mapping = {label: f"Speaker_{index + 1}" for index, label in enumerate(labels)}
         turns = [
             {
@@ -140,7 +165,7 @@ def main() -> int:
                 "end": round(float(segment.end), 3),
                 "speaker": mapping[str(segment.speaker)],
             }
-            for segment in result.segments
+            for segment in segments
         ]
         payload = {"speaker_turns": turns, "speaker_embeddings": {}}
         Path(args.output).write_text(json.dumps(payload), encoding="utf-8")
@@ -157,10 +182,11 @@ def main() -> int:
         result = pipeline.diarize_samples(
             samples[first:last], file_id=f"chunk_{int(start)}", pipeline_config=pipeline_config
         )
-        labels = local_labels(result)
+        segments = getattr(result, "exclusive_segments", None) or result.segments
+        labels = local_labels(segments)
         existing = [turn for turn in turns if float(turn["end"]) > start]
-        mapping, next_id = assign_labels(labels, result, start, existing, next_id)
-        for segment in result.segments:
+        mapping, next_id = assign_labels(labels, segments, start, existing, next_id)
+        for segment in segments:
             turns.append(
                 {
                     "start": round(start + float(segment.start), 3),
