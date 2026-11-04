@@ -6,6 +6,7 @@ pipeline:
   enable_sdh: true
   write_debug_json: true
   enable_llm_review: false
+  enable_forced_alignment: true
 providers:
   asr: whisper_http
   diarization: senko_gpu
@@ -38,6 +39,11 @@ senko_gpu:
   max_speakers: null
 ocr:
   periodic_fps: 0.5
+forced_alignment:
+  python: /home/calmos/miniconda3/envs/senko/bin/python
+  script: /home/calmos/subtitle-fusion/scripts/forced_align_worker.py
+  timeout_sec: 240
+  language: en
 paths:
   cache_dir: data/cache
   imdb_dir: data/imdb

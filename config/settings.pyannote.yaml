@@ -34,6 +34,7 @@ pipeline:
   prefer_text_subtitle_track: true
   reuse_embedded_subtitles: false
   write_debug_json: true
+  enable_forced_alignment: true
 providers:
   asr: whisper_http
   diarization: pyannote_gpu
@@ -45,6 +46,11 @@ pyannote_gpu:
   min_speakers: null
   python: /home/calmos/miniconda3/envs/nemo-diar/bin/python
   timeout_sec: 240.0
+forced_alignment:
+  python: /home/calmos/miniconda3/envs/senko/bin/python
+  script: /home/calmos/subtitle-fusion/scripts/forced_align_worker.py
+  timeout_sec: 240
+  language: en
 voiceprints:
   enabled: true
   max_samples_per_character: 12

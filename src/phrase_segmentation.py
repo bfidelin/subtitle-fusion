@@ -318,7 +318,11 @@ def segment_sentences(words, *, turns=None, max_chars=84, max_duration=8.0):
         current.append(word)
         text = " ".join(str(w.get("text", "")).strip() for w in current)
         duration = float(current[-1].get("end", 0.0)) - float(current[0].get("start", 0.0))
-        if _is_sentence_end(word.get("text", "")) or len(text) >= max_chars or duration >= max_duration:
+        if (
+            _is_sentence_end(word.get("text", ""))
+            or len(text) >= max_chars
+            or duration >= max_duration
+        ):
             groups.append(current)
             current = []
     if current:
@@ -332,18 +336,22 @@ def segment_sentences(words, *, turns=None, max_chars=84, max_duration=8.0):
         else:
             # Preserve the phrase as one editorial cue. Attribute it to the
             # final speaker (the phrase's completion), and keep per-word IDs.
-            tail_speaker = next((s for s in reversed(speakers) if s not in ("", "UNKNOWN")), "UNKNOWN")
+            tail_speaker = next(
+                (s for s in reversed(speakers) if s not in ("", "UNKNOWN")), "UNKNOWN"
+            )
             speaker_id = tail_speaker
-        cues.append(PhraseCue(
-            id=len(cues) + 1,
-            start=float(group[0].get("start", 0.0)),
-            end=float(group[-1].get("end", group[-1].get("start", 0.0))),
-            speaker_id=speaker_id,
-            text_raw=" ".join(str(w.get("text", "")).strip() for w in group).strip(),
-            words=list(group),
-            concerns=["multi_speaker_cue"] if len(unique) > 1 else [],
-            flags=["mixed_speakers"] if len(unique) > 1 else [],
-        ))
+        cues.append(
+            PhraseCue(
+                id=len(cues) + 1,
+                start=float(group[0].get("start", 0.0)),
+                end=float(group[-1].get("end", group[-1].get("start", 0.0))),
+                speaker_id=speaker_id,
+                text_raw=" ".join(str(w.get("text", "")).strip() for w in group).strip(),
+                words=list(group),
+                concerns=["multi_speaker_cue"] if len(unique) > 1 else [],
+                flags=["mixed_speakers"] if len(unique) > 1 else [],
+            )
+        )
     for idx, cue in enumerate(cues, start=1):
         cue.id = idx
     return cues
